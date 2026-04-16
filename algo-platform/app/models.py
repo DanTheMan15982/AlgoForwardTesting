@@ -120,7 +120,8 @@ class EventType(str, Enum):
 class EvalCreateRequest(BaseModel):
     name: str
     strategy_key: str
-    symbol: str
+    account_type: str = "REGULAR"
+    prop_firm_mode: Optional[str] = None
     starting_balance: float
     risk_usd: float
     max_dd_pct: float = 0.06
@@ -140,12 +141,14 @@ class EvalCreateRequest(BaseModel):
 class StrategyCreateRequest(BaseModel):
     key: str
     name: str
+    symbol: str
     webhook_passthrough_enabled: bool = False
     webhook_passthrough_url: Optional[str] = None
 
 
 class StrategyUpdateRequest(BaseModel):
     name: str
+    symbol: str
     webhook_passthrough_enabled: bool = False
     webhook_passthrough_url: Optional[str] = None
 
@@ -195,6 +198,8 @@ class EvalResponse(BaseModel):
     name: str
     strategy_key: str
     strategy_name: Optional[str] = None
+    account_type: str = "REGULAR"
+    prop_firm_mode: Optional[str] = None
     symbol: str
     status: EvalStatus
     created_at: str
@@ -279,6 +284,7 @@ class EvalResponse(BaseModel):
 class StrategyResponse(BaseModel):
     key: str
     name: str
+    symbol: str
     created_at: str
     updated_at: str
     webhook_passthrough_enabled: bool

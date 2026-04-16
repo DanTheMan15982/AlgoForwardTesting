@@ -35,6 +35,7 @@ export function EvalsTable({ evals }: EvalsTableProps) {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
+          <TableHead>Account</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Symbol</TableHead>
           <TableHead>Strategy</TableHead>
@@ -133,6 +134,10 @@ function EvalTableRow({ evalRow, price, now }: EvalRowProps) {
         : equityColor;
   const profitRemainingColor =
     profitRemainingValue == null ? "text-slate-400" : "text-neon";
+  const accountLabel =
+    evalRow.account_type === "PROP_FIRM"
+      ? `Prop Firm${evalRow.prop_firm_mode ? ` • ${evalRow.prop_firm_mode === "LIVE_SIM" ? "Live Sim" : "Eval"}` : ""}`
+      : "Regular";
 
   return (
     <TableRow
@@ -147,6 +152,7 @@ function EvalTableRow({ evalRow, price, now }: EvalRowProps) {
           {evalRow.name}
         </Link>
       </TableCell>
+      <TableCell>{accountLabel}</TableCell>
       <TableCell>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={statusVariant(evalRow.status)}>{evalRow.status}</Badge>

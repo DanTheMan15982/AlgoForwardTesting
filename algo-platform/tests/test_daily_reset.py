@@ -14,6 +14,8 @@ def _build_eval_row(day_key: str, day_start_equity: float) -> EvalRow:
         id=str(uuid4()),
         name="Test Eval",
         strategy_key="test",
+        account_type="REGULAR",
+        prop_firm_mode=None,
         symbol="BTC",
         rules_json="{}",
         status="ACTIVE",

@@ -23,6 +23,8 @@ class EvalRow:
     id: str
     name: str
     strategy_key: str
+    account_type: str
+    prop_firm_mode: Optional[str]
     symbol: str
     rules_json: str
     status: str
@@ -70,6 +72,7 @@ class EvalRow:
 class StrategyRow:
     key: str
     name: str
+    symbol: str
     created_at: str
     updated_at: str
     webhook_passthrough_enabled: int
@@ -172,6 +175,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS strategies (
                     key TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
+                    symbol TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     webhook_passthrough_enabled INTEGER NOT NULL DEFAULT 0,
@@ -180,6 +184,7 @@ class Database:
                 """
             )
             for statement in (
+                "ALTER TABLE strategies ADD COLUMN symbol TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE strategies ADD COLUMN webhook_passthrough_enabled INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE strategies ADD COLUMN webhook_passthrough_url TEXT",
                 "ALTER TABLE strategies ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
@@ -195,6 +200,8 @@ class Database:
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     strategy_key TEXT NOT NULL,
+                    account_type TEXT NOT NULL DEFAULT 'REGULAR',
+                    prop_firm_mode TEXT,
                     symbol TEXT NOT NULL,
                     rules_json TEXT NOT NULL,
                     status TEXT NOT NULL,
@@ -245,6 +252,8 @@ class Database:
                 pass
             for statement in (
                 "ALTER TABLE evals ADD COLUMN fees_enabled INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE evals ADD COLUMN account_type TEXT NOT NULL DEFAULT 'REGULAR'",
+                "ALTER TABLE evals ADD COLUMN prop_firm_mode TEXT",
                 "ALTER TABLE evals ADD COLUMN slippage_enabled INTEGER NOT NULL DEFAULT 1",
                 "ALTER TABLE evals ADD COLUMN taker_fee_rate REAL NOT NULL DEFAULT 0.0004",
                 "ALTER TABLE evals ADD COLUMN slippage_min_usd REAL NOT NULL DEFAULT 2.0",
@@ -562,6 +571,16 @@ class Database:
         cur = self._conn.execute(
             """
             SELECT strategy_key,
+                   COALESCE(
+                       (
+                           SELECT e2.symbol
+                           FROM evals e2
+                           WHERE e2.strategy_key = evals.strategy_key
+                           ORDER BY e2.created_at DESC
+                           LIMIT 1
+                       ),
+                       ''
+                   ) AS symbol,
                    MIN(created_at) AS created_at,
                    MAX(created_at) AS updated_at,
                    MAX(COALESCE(webhook_passthrough_enabled, 0)) AS webhook_passthrough_enabled,
@@ -583,10 +602,15 @@ class Database:
                 """
                 INSERT INTO strategies (
                     key, name, created_at, updated_at, webhook_passthrough_enabled, webhook_passthrough_url
+                    , symbol
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET
                     name = COALESCE(NULLIF(strategies.name, ''), excluded.name),
+                    symbol = CASE
+                        WHEN strategies.symbol = '' THEN excluded.symbol
+                        ELSE strategies.symbol
+                    END,
                     updated_at = CASE
                         WHEN strategies.updated_at = '' THEN excluded.updated_at
                         ELSE strategies.updated_at
@@ -603,6 +627,7 @@ class Database:
                     updated_at,
                     int(bool(row["webhook_passthrough_enabled"])),
                     row["webhook_passthrough_url"],
+                    row["symbol"],
                 ),
             )
 
@@ -611,13 +636,14 @@ class Database:
             self._conn.execute(
                 """
                 INSERT INTO strategies (
-                    key, name, created_at, updated_at, webhook_passthrough_enabled, webhook_passthrough_url
+                    key, name, symbol, created_at, updated_at, webhook_passthrough_enabled, webhook_passthrough_url
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.key,
                     row.name,
+                    row.symbol,
                     row.created_at,
                     row.updated_at,
                     row.webhook_passthrough_enabled,
@@ -641,6 +667,7 @@ class Database:
         self,
         key: str,
         name: str,
+        symbol: str,
         webhook_passthrough_enabled: int,
         webhook_passthrough_url: Optional[str],
         updated_at: str,
@@ -650,12 +677,13 @@ class Database:
                 """
                 UPDATE strategies
                 SET name = ?,
+                    symbol = ?,
                     webhook_passthrough_enabled = ?,
                     webhook_passthrough_url = ?,
                     updated_at = ?
                 WHERE key = ?
                 """,
-                (name, webhook_passthrough_enabled, webhook_passthrough_url, updated_at, key),
+                (name, symbol, webhook_passthrough_enabled, webhook_passthrough_url, updated_at, key),
             )
             self._conn.commit()
 
@@ -664,7 +692,7 @@ class Database:
             self._conn.execute(
                 """
                 INSERT INTO evals (
-                    id, name, strategy_key, symbol, rules_json, status, created_at, risk_usd,
+                    id, name, strategy_key, account_type, prop_firm_mode, symbol, rules_json, status, created_at, risk_usd,
                     starting_balance, current_balance, current_equity,
                     day_start_equity, day_window_start_ts, last_daily_reset_day, max_dd_pct, daily_dd_pct,
                     fees_enabled, slippage_enabled, taker_fee_rate, slippage_min_usd, slippage_max_usd, risk_updated_at,
@@ -677,12 +705,14 @@ class Database:
                     daily_dd_guard_close_open_positions_on_trigger, daily_dd_guard_blocking,
                     daily_dd_guard_blocked_at, daily_dd_guard_reason
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row.id,
                     row.name,
                     row.strategy_key,
+                    row.account_type,
+                    row.prop_firm_mode,
                     row.symbol,
                     row.rules_json,
                     row.status,

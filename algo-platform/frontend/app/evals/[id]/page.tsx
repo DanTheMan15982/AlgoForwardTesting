@@ -22,6 +22,8 @@ type EvalDetail = {
   symbol: string;
   strategy_key: string;
   strategy_name?: string | null;
+  account_type?: string;
+  prop_firm_mode?: string | null;
   starting_balance: number;
   current_balance: number;
   current_equity: number;
@@ -527,7 +529,7 @@ export default function EvalDetailPage() {
 
   const deleteEval = async () => {
     if (!evalId) return;
-    const confirmDelete = window.confirm("Delete this eval? This cannot be undone.");
+    const confirmDelete = window.confirm("Delete this sim account? This cannot be undone.");
     if (!confirmDelete) return;
     await fetch(`/api/evals/${evalId}`, { method: "DELETE" });
     router.replace("/");
@@ -549,7 +551,7 @@ export default function EvalDetailPage() {
   const maxBucket = Math.max(1, ...avgWinBuckets);
 
   if (!detail) {
-    return <div className="text-slate-400">Loading eval...</div>;
+    return <div className="text-slate-400">Loading sim account...</div>;
   }
 
   const dailyUsed = Math.max(
@@ -624,6 +626,10 @@ export default function EvalDetailPage() {
           ? "text-warn"
           : "text-danger";
   const isPassed = detail.status === "PASSED";
+  const accountLabel =
+    detail.account_type === "PROP_FIRM"
+      ? `Prop Firm${detail.prop_firm_mode ? ` • ${detail.prop_firm_mode === "LIVE_SIM" ? "Live Sim" : "Eval"}` : ""}`
+      : "Regular Account";
   const activePositionId = detail.open_positions?.[0]?.id ?? null;
   const ddGuardBlocking = Boolean(detail.daily_dd_guard_blocking);
   const dailyDdAllowanceUsd = Math.max(0, detail.day_start_equity * detail.daily_dd_pct);
@@ -636,10 +642,10 @@ export default function EvalDetailPage() {
   return (
     <div className="space-y-8">
       {isPassed ? (
-        <div className="rounded-xl border border-success/40 bg-success/10 px-4 py-3 text-sm text-success shadow-glowSoft animate-pass-in">
+          <div className="rounded-xl border border-success/40 bg-success/10 px-4 py-3 text-sm text-success shadow-glowSoft animate-pass-in">
           <div className="flex items-center gap-2 font-semibold uppercase tracking-[0.2em]">
             <CheckCircle className="h-4 w-4" />
-            Evaluation Passed
+            Sim Account Passed
           </div>
         </div>
       ) : null}
@@ -651,17 +657,18 @@ export default function EvalDetailPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-neonSoft">{detail.strategy_key}</p>
             <h2 className="text-2xl font-semibold text-slate-100">{detail.name}</h2>
+            <p className="mt-1 text-sm text-slate-500">{accountLabel}</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={pauseEval}>
-            Pause Eval
+            Pause Account
           </Button>
           <Button variant="default" onClick={resumeEval}>
-            Resume Eval
+            Resume Account
           </Button>
           <Button variant="danger" onClick={deleteEval}>
-            Delete Eval
+            Delete Account
           </Button>
         </div>
       </section>
@@ -669,7 +676,7 @@ export default function EvalDetailPage() {
       <section
         className={`grid gap-4 md:grid-cols-3 xl:grid-cols-6 ${isPassed ? "border-t border-success/40 pt-4" : ""}`}
       >
-        <StatCard title="Status" value={detail.status} hint={detail.symbol} />
+        <StatCard title="Status" value={detail.status} hint={`${detail.symbol} • ${accountLabel}`} />
         <StatCard title="Starting Balance" value={formatCurrency(detail.starting_balance)} />
         <StatCard title="Current Balance" value={formatCurrency(detail.current_balance)} />
         <StatCard
@@ -881,7 +888,7 @@ export default function EvalDetailPage() {
       <section className="grid gap-4">
         <Card>
           <CardHeader>
-            <CardTitle>Evaluation Health</CardTitle>
+            <CardTitle>Sim Account Health</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-500">
@@ -1478,7 +1485,7 @@ export default function EvalDetailPage() {
                 <div>
                   <div className="font-medium">Strategy Webhook Passthrough</div>
                   <div className="text-xs text-slate-500">
-                    This setting is stored on the linked strategy and shared by every eval using it.
+                    This setting is stored on the linked strategy and shared by every sim account using it.
                   </div>
                 </div>
               </label>

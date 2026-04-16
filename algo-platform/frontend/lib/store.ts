@@ -11,6 +11,8 @@ export type EvalSummary = {
   name: string;
   strategy_key: string;
   strategy_name?: string | null;
+  account_type?: string;
+  prop_firm_mode?: string | null;
   symbol: string;
   status: string;
   current_equity: number;

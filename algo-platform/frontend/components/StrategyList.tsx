@@ -24,6 +24,7 @@ type StrategyListProps = {
 type StrategyFormState = {
   key: string;
   name: string;
+  symbol: string;
   webhook_passthrough_enabled: boolean;
   webhook_passthrough_url: string;
 };
@@ -31,6 +32,7 @@ type StrategyFormState = {
 const emptyForm: StrategyFormState = {
   key: "",
   name: "",
+  symbol: "BTC",
   webhook_passthrough_enabled: false,
   webhook_passthrough_url: ""
 };
@@ -67,6 +69,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
       key: strategy.key,
       name: strategy.name,
       webhook_passthrough_enabled: strategy.webhook_passthrough_enabled,
+      symbol: strategy.symbol,
       webhook_passthrough_url: strategy.webhook_passthrough_url ?? ""
     });
     setError(null);
@@ -77,6 +80,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
     setError(null);
     const payload = {
       name: form.name.trim(),
+      symbol: form.symbol,
       webhook_passthrough_enabled: form.webhook_passthrough_enabled,
       webhook_passthrough_url: form.webhook_passthrough_url.trim() || null
     };
@@ -114,7 +118,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
           <p className="text-xs uppercase tracking-[0.35em] text-neonSoft">Strategies</p>
           <h2 className="text-2xl font-semibold text-slate-100">Webhook routing lives here</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Define the strategy key once, set the passthrough once, and attach as many evals as you want.
+            Define the strategy key once, set the passthrough once, and attach as many sim accounts as you want.
           </p>
         </div>
         <Dialog open={open} onOpenChange={(next) => {
@@ -148,6 +152,25 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                   placeholder="EMA Retest"
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
                 />
+              </div>
+              <div>
+                <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Ticker</div>
+                <div className="flex gap-2">
+                  {(["BTC", "ETH", "SOL"] as const).map((symbol) => (
+                    <button
+                      key={symbol}
+                      type="button"
+                      className={
+                        form.symbol === symbol
+                          ? "rounded-full border border-neon/60 bg-neon/10 px-3 py-2 text-sm text-neon"
+                          : "rounded-full border border-border/70 px-3 py-2 text-sm text-slate-400 hover:text-slate-100"
+                      }
+                      onClick={() => setForm({ ...form, symbol })}
+                    >
+                      {symbol}
+                    </button>
+                  ))}
+                </div>
               </div>
               <label className="flex items-start gap-3 rounded-lg border border-border/70 bg-panelSoft/60 p-3 text-sm">
                 <input
@@ -198,6 +221,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-semibold text-slate-100">{strategy.name}</h3>
                   <Badge variant="default">{strategy.key}</Badge>
+                  <Badge variant="info">{strategy.symbol}</Badge>
                   <Badge variant={strategy.webhook_passthrough_enabled ? "success" : "warning"}>
                     {strategy.webhook_passthrough_enabled ? "Passthrough On" : "Passthrough Off"}
                   </Badge>
@@ -213,7 +237,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <div className="rounded-lg border border-border/60 bg-panelSoft/60 px-3 py-2 text-sm text-slate-300">
-                  Active evals: {activeEvalCounts[strategy.key] ?? 0}
+                  Active sim accounts: {activeEvalCounts[strategy.key] ?? 0}
                 </div>
                 <Button variant="outline" onClick={() => openEdit(strategy)}>
                   Edit
@@ -223,7 +247,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
           </div>
         )) : (
           <div className="rounded-xl border border-border/70 bg-panel/75 p-6 text-sm text-slate-400">
-            No strategies yet. Create one before spinning up evals.
+            No strategies yet. Create one before spinning up sim accounts.
           </div>
         )}
       </div>

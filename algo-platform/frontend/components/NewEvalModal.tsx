@@ -32,7 +32,8 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
   const [form, setForm] = useState({
     name: "",
     strategy_key: "",
-    symbol: "BTC",
+    account_type: "REGULAR",
+    prop_firm_mode: "EVAL",
     starting_balance: "10000",
     risk_usd: "50",
     max_dd_pct: "6",
@@ -74,7 +75,8 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
     const payload = {
       name: form.name,
       strategy_key: form.strategy_key,
-      symbol: form.symbol,
+      account_type: form.account_type,
+      prop_firm_mode: form.account_type === "PROP_FIRM" ? form.prop_firm_mode : null,
       starting_balance: Number(form.starting_balance),
       risk_usd: Number(form.risk_usd),
       max_dd_pct: normalizePercent(form.max_dd_pct || `${defaultPayload.max_dd_pct}`, defaultPayload.max_dd_pct),
@@ -100,7 +102,7 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      setError(data?.reason ?? "Failed to create eval.");
+      setError(data?.reason ?? "Failed to create sim account.");
       return;
     }
     const data = await res.json();
@@ -118,21 +120,21 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
       if (!next) resetState();
     }}>
       <DialogTrigger asChild>
-        <Button variant="outline" disabled={!strategies.length}>New Eval</Button>
+        <Button variant="outline" disabled={!strategies.length}>New Sim Account</Button>
       </DialogTrigger>
       <DialogContent className="h-[90vh] w-[95vw] max-w-lg overflow-hidden p-0 sm:h-auto sm:w-full sm:max-w-2xl">
         <div className="flex h-full flex-col">
           <DialogHeader className="px-5 pt-5">
-            <DialogTitle>Create new eval</DialogTitle>
+            <DialogTitle>Create sim account</DialogTitle>
             <DialogDescription>
-              Attach the eval to a stored strategy. Webhook routing now lives on the strategy itself.
+              Attach the sim account to a stored strategy. Strategy routing owns ticker and webhook configuration.
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-5 pb-6">
             <div className="grid gap-4">
               {!strategies.length ? (
                 <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-slate-200">
-                  Create a strategy in the Strategies tab before creating an eval.
+                  Create a strategy in the Strategies tab before creating a sim account.
                 </div>
               ) : null}
               <div>
@@ -143,6 +145,52 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
                 />
               </div>
+              <div>
+                <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Account type</div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: "REGULAR", label: "Regular Account" },
+                    { value: "PROP_FIRM", label: "Prop Firm" }
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={
+                        form.account_type === option.value
+                          ? "rounded-full border border-neon/60 bg-neon/10 px-3 py-2 text-sm text-neon"
+                          : "rounded-full border border-border/70 px-3 py-2 text-sm text-slate-400 hover:text-slate-100"
+                      }
+                      onClick={() => setForm({ ...form, account_type: option.value })}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {form.account_type === "PROP_FIRM" ? (
+                <div>
+                  <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Prop firm mode</div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: "EVAL", label: "Eval" },
+                      { value: "LIVE_SIM", label: "Live Sim" }
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={
+                          form.prop_firm_mode === option.value
+                            ? "rounded-full border border-neon/60 bg-neon/10 px-3 py-2 text-sm text-neon"
+                            : "rounded-full border border-border/70 px-3 py-2 text-sm text-slate-400 hover:text-slate-100"
+                        }
+                        onClick={() => setForm({ ...form, prop_firm_mode: option.value })}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div>
                 <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Strategy</div>
                 <Select
@@ -166,28 +214,15 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
                   <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Strategy Webhook</div>
                   <div className="mt-2 text-slate-100 break-all">{webhookUrl}</div>
                   <div className="mt-2 text-xs text-slate-500">
+                    Ticker: {selectedStrategy.symbol}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
                     Passthrough: {selectedStrategy.webhook_passthrough_enabled
                       ? selectedStrategy.webhook_passthrough_url || "(enabled, URL not set)"
                       : "Disabled"}
                   </div>
                 </div>
               ) : null}
-              <div>
-                <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Symbol</div>
-                <Select
-                  value={form.symbol}
-                  onValueChange={(value) => setForm({ ...form, symbol: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Symbol" />
-                  </SelectTrigger>
-                  <SelectContent position="popper" side="bottom" align="start" sideOffset={6}>
-                    <SelectItem value="BTC">BTC</SelectItem>
-                    <SelectItem value="ETH">ETH</SelectItem>
-                    <SelectItem value="SOL">SOL</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div>
                 <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Starting balance</div>
                 <Input
@@ -344,12 +379,17 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
               ) : null}
               {createdId && selectedStrategy ? (
                 <div className="rounded-lg border border-border/80 bg-panelSoft/60 p-4 text-sm text-slate-300">
-                  <p className="text-neon">Eval created</p>
+                  <p className="text-neon">Sim account created</p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {form.account_type === "REGULAR"
+                      ? "Regular account"
+                      : `Prop firm • ${form.prop_firm_mode === "LIVE_SIM" ? "Live Sim" : "Eval"}`}
+                  </p>
                   <p className="mt-2">Webhook URL</p>
                   <p className="break-all text-xs text-slate-400">{webhookUrl}</p>
                   <p className="mt-2">TradingView JSON</p>
                   <pre className="mt-2 text-xs text-slate-400">
-{`{\n  "ticker": "${form.symbol}USDT",\n  "side": "LONG",\n  "entry": 44000,\n  "stop": 42000,\n  "tp": 46000\n}`}
+{`{\n  "ticker": "${selectedStrategy.symbol}USDT",\n  "side": "LONG",\n  "entry": 44000,\n  "stop": 42000,\n  "tp": 46000\n}`}
                   </pre>
                 </div>
               ) : null}
@@ -357,7 +397,7 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
           </div>
           <div className="border-t border-border/70 bg-panel/80 px-5 py-4">
             <Button className="w-full" onClick={handleSubmit} disabled={!strategies.length}>
-              Create Eval
+              Create Sim Account
             </Button>
           </div>
         </div>

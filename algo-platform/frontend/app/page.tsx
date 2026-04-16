@@ -76,7 +76,7 @@ export default function DashboardPage() {
       <section className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-[0.4em] text-neonSoft">Control Surface</p>
-          <h2 className="text-2xl font-semibold text-slate-100">Strategies first, evals second</h2>
+          <h2 className="text-2xl font-semibold text-slate-100">Strategies first, sim accounts second</h2>
           <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
             <span>Prices stream live while strategy routing stays explicit.</span>
             <Badge variant={wsConnected ? "success" : "warning"}>
@@ -89,7 +89,7 @@ export default function DashboardPage() {
             Strategy List
           </button>
           <button className={tabClass("evals")} onClick={() => setTab("evals")}>
-            Eval List
+            Sim Account List
           </button>
           <NewEvalModal strategies={strategies} />
         </div>
@@ -119,14 +119,14 @@ export default function DashboardPage() {
             <CardContent className="pt-5">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-neonSoft">Active Evals</p>
-                  <h2 className="text-2xl font-semibold text-slate-100">Only live evals stay here</h2>
+                  <p className="text-xs uppercase tracking-[0.35em] text-neonSoft">Active Sim Accounts</p>
+                  <h2 className="text-2xl font-semibold text-slate-100">Only live sim accounts stay here</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Archived, failed, and passed runs are out of the main list. This view is for what is active right now.
+                    Archived, failed, and passed runs are out of the main list. This view is for the sim accounts that are active right now.
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-panelSoft/60 px-4 py-2 text-sm text-slate-300">
-                  Active eval count: {activeEvals.length}
+                  Active sim account count: {activeEvals.length}
                 </div>
               </div>
               <div className="mb-3 text-xs text-slate-500 md:hidden">Swipe to view all columns.</div>

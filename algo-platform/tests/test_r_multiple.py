@@ -57,6 +57,8 @@ def _build_eval(
         id=str(uuid4()),
         name="Test Eval",
         strategy_key="test",
+        account_type="REGULAR",
+        prop_firm_mode=None,
         symbol="BTC",
         rules_json="{}",
         status=status,

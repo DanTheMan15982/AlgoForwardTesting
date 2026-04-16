@@ -86,10 +86,26 @@ def _get_strategy_config(strategy_key: str) -> Optional[StrategyConfig]:
     return STRATEGY_REGISTRY.get(strategy_key)
 
 
+def _normalize_account_type(
+    account_type: str,
+    prop_firm_mode: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    normalized_type = (account_type or "").strip().upper()
+    normalized_mode = (prop_firm_mode or "").strip().upper() or None
+    if normalized_type not in {"REGULAR", "PROP_FIRM"}:
+        return None, None, "Account type must be REGULAR or PROP_FIRM"
+    if normalized_type == "REGULAR":
+        return normalized_type, None, None
+    if normalized_mode not in {"EVAL", "LIVE_SIM"}:
+        return None, None, "Prop firm accounts require mode EVAL or LIVE_SIM"
+    return normalized_type, normalized_mode, None
+
+
 def _strategy_response(row: StrategyRow) -> StrategyResponse:
     return StrategyResponse(
         key=row.key,
         name=row.name,
+        symbol=row.symbol,
         created_at=row.created_at,
         updated_at=row.updated_at,
         webhook_passthrough_enabled=bool(row.webhook_passthrough_enabled),
@@ -207,10 +223,13 @@ async def list_strategies() -> list[StrategyResponse]:
 async def create_strategy(request: StrategyCreateRequest) -> JSONResponse | StrategyResponse:
     key = request.key.strip()
     name = request.name.strip()
+    symbol = request.symbol.strip().upper()
     if not key:
         return _failure("Strategy key is required", status_code=400)
     if not name:
         return _failure("Strategy name is required", status_code=400)
+    if symbol not in {"BTC", "ETH", "SOL"}:
+        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
     if db.fetch_strategy(key):
         return _failure("Strategy key already exists", status_code=409)
     enabled, url, error = _normalize_webhook_passthrough_settings(
@@ -223,6 +242,7 @@ async def create_strategy(request: StrategyCreateRequest) -> JSONResponse | Stra
     row = StrategyRow(
         key=key,
         name=name,
+        symbol=symbol,
         created_at=now,
         updated_at=now,
         webhook_passthrough_enabled=1 if enabled else 0,
@@ -241,8 +261,11 @@ async def update_strategy(
     if not row:
         return _failure("Strategy not found", status_code=404)
     name = request.name.strip()
+    symbol = request.symbol.strip().upper()
     if not name:
         return _failure("Strategy name is required", status_code=400)
+    if symbol not in {"BTC", "ETH", "SOL"}:
+        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
     enabled, url, error = _normalize_webhook_passthrough_settings(
         request.webhook_passthrough_enabled,
         request.webhook_passthrough_url,
@@ -253,6 +276,7 @@ async def update_strategy(
     db.update_strategy(
         strategy_key,
         name,
+        symbol,
         1 if enabled else 0,
         url,
         updated_at,
@@ -265,16 +289,23 @@ async def update_strategy(
 
 @app.post("/api/evals", response_model=EvalResponse)
 async def create_eval(request: EvalCreateRequest) -> EvalResponse:
-    symbol = request.symbol.upper()
-    if symbol not in {"BTC", "ETH", "SOL"}:
-        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
     strategy = db.fetch_strategy(request.strategy_key)
     if not strategy:
         return _failure("Strategy not found", status_code=404)
+    if strategy.symbol not in {"BTC", "ETH", "SOL"}:
+        return _failure("Strategy ticker is not configured", status_code=400)
+    account_type, prop_firm_mode, account_error = _normalize_account_type(
+        request.account_type,
+        request.prop_firm_mode,
+    )
+    if account_error:
+        return _failure(account_error, status_code=400)
     row = eval_manager.create_eval(
         name=request.name,
         strategy_key=request.strategy_key,
-        symbol=symbol,
+        account_type=account_type,
+        prop_firm_mode=prop_firm_mode,
+        symbol=strategy.symbol,
         starting_balance=request.starting_balance,
         risk_usd=request.risk_usd,
         fees_enabled=request.fees_enabled,
@@ -425,6 +456,7 @@ async def update_webhook_passthrough(
     db.update_strategy(
         strategy.key,
         strategy.name,
+        strategy.symbol,
         1 if enabled else 0,
         url,
         datetime.now(timezone.utc).isoformat(),
@@ -945,6 +977,8 @@ def _eval_response(row: Any) -> EvalResponse:
         name=row.name,
         strategy_key=row.strategy_key,
         strategy_name=strategy.name if strategy else None,
+        account_type=row.account_type,
+        prop_firm_mode=row.prop_firm_mode,
         symbol=row.symbol,
         status=row.status,
         created_at=row.created_at,
