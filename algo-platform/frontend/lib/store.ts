@@ -10,6 +10,7 @@ export type EvalSummary = {
   id: string;
   name: string;
   strategy_key: string;
+  strategy_name?: string | null;
   symbol: string;
   status: string;
   current_equity: number;

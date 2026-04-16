@@ -67,6 +67,16 @@ class EvalRow:
 
 
 @dataclass(frozen=True)
+class StrategyRow:
+    key: str
+    name: str
+    created_at: str
+    updated_at: str
+    webhook_passthrough_enabled: int
+    webhook_passthrough_url: Optional[str]
+
+
+@dataclass(frozen=True)
 class PositionRow:
     id: str
     eval_id: str
@@ -159,6 +169,28 @@ class Database:
             self._conn.execute("PRAGMA busy_timeout=3000;")
             self._conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS strategies (
+                    key TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    webhook_passthrough_enabled INTEGER NOT NULL DEFAULT 0,
+                    webhook_passthrough_url TEXT
+                )
+                """
+            )
+            for statement in (
+                "ALTER TABLE strategies ADD COLUMN webhook_passthrough_enabled INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE strategies ADD COLUMN webhook_passthrough_url TEXT",
+                "ALTER TABLE strategies ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE strategies ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''",
+            ):
+                try:
+                    self._conn.execute(statement)
+                except sqlite3.OperationalError:
+                    pass
+            self._conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS evals (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -246,6 +278,7 @@ class Database:
                     self._conn.execute(statement)
                 except sqlite3.OperationalError:
                     pass
+            self._migrate_strategies_from_evals()
             self._migrate_eval_daily_reset_day()
             self._conn.execute(
                 """
@@ -525,6 +558,107 @@ class Database:
         with self._lock:
             self._conn.close()
 
+    def _migrate_strategies_from_evals(self) -> None:
+        cur = self._conn.execute(
+            """
+            SELECT strategy_key,
+                   MIN(created_at) AS created_at,
+                   MAX(created_at) AS updated_at,
+                   MAX(COALESCE(webhook_passthrough_enabled, 0)) AS webhook_passthrough_enabled,
+                   MAX(NULLIF(TRIM(COALESCE(webhook_passthrough_url, '')), '')) AS webhook_passthrough_url
+            FROM evals
+            WHERE TRIM(COALESCE(strategy_key, '')) <> ''
+            GROUP BY strategy_key
+            """
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return
+        fallback_now = utc_iso()
+        for row in rows:
+            strategy_key = row["strategy_key"]
+            created_at = row["created_at"] or fallback_now
+            updated_at = row["updated_at"] or created_at
+            self._conn.execute(
+                """
+                INSERT INTO strategies (
+                    key, name, created_at, updated_at, webhook_passthrough_enabled, webhook_passthrough_url
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    name = COALESCE(NULLIF(strategies.name, ''), excluded.name),
+                    updated_at = CASE
+                        WHEN strategies.updated_at = '' THEN excluded.updated_at
+                        ELSE strategies.updated_at
+                    END,
+                    created_at = CASE
+                        WHEN strategies.created_at = '' THEN excluded.created_at
+                        ELSE strategies.created_at
+                    END
+                """,
+                (
+                    strategy_key,
+                    strategy_key,
+                    created_at,
+                    updated_at,
+                    int(bool(row["webhook_passthrough_enabled"])),
+                    row["webhook_passthrough_url"],
+                ),
+            )
+
+    def insert_strategy(self, row: StrategyRow) -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO strategies (
+                    key, name, created_at, updated_at, webhook_passthrough_enabled, webhook_passthrough_url
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row.key,
+                    row.name,
+                    row.created_at,
+                    row.updated_at,
+                    row.webhook_passthrough_enabled,
+                    row.webhook_passthrough_url,
+                ),
+            )
+            self._conn.commit()
+
+    def fetch_strategy(self, key: str) -> Optional[StrategyRow]:
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM strategies WHERE key = ?", (key,))
+            row = cur.fetchone()
+            return StrategyRow(**row) if row else None
+
+    def list_strategies(self) -> list[StrategyRow]:
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM strategies ORDER BY updated_at DESC, key ASC")
+            return [StrategyRow(**row) for row in cur.fetchall()]
+
+    def update_strategy(
+        self,
+        key: str,
+        name: str,
+        webhook_passthrough_enabled: int,
+        webhook_passthrough_url: Optional[str],
+        updated_at: str,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                UPDATE strategies
+                SET name = ?,
+                    webhook_passthrough_enabled = ?,
+                    webhook_passthrough_url = ?,
+                    updated_at = ?
+                WHERE key = ?
+                """,
+                (name, webhook_passthrough_enabled, webhook_passthrough_url, updated_at, key),
+            )
+            self._conn.commit()
+
     def insert_eval(self, row: EvalRow) -> None:
         with self._lock:
             self._conn.execute(
@@ -638,9 +772,8 @@ class Database:
             cur = self._conn.execute(
                 """
                 SELECT webhook_passthrough_url
-                FROM evals
-                WHERE strategy_key = ?
-                  AND status IN ('ACTIVE', 'PAUSED')
+                FROM strategies
+                WHERE key = ?
                   AND webhook_passthrough_enabled = 1
                   AND webhook_passthrough_url IS NOT NULL
                   AND TRIM(webhook_passthrough_url) <> ''

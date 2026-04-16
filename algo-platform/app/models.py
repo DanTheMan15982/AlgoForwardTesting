@@ -135,6 +135,17 @@ class EvalCreateRequest(BaseModel):
     latency_min_sec: int = 2
     latency_max_sec: int = 10
     dynamic_tp_enabled: bool = False
+
+
+class StrategyCreateRequest(BaseModel):
+    key: str
+    name: str
+    webhook_passthrough_enabled: bool = False
+    webhook_passthrough_url: Optional[str] = None
+
+
+class StrategyUpdateRequest(BaseModel):
+    name: str
     webhook_passthrough_enabled: bool = False
     webhook_passthrough_url: Optional[str] = None
 
@@ -183,6 +194,7 @@ class EvalResponse(BaseModel):
     id: str
     name: str
     strategy_key: str
+    strategy_name: Optional[str] = None
     symbol: str
     status: EvalStatus
     created_at: str
@@ -262,6 +274,15 @@ class EvalResponse(BaseModel):
     daily_dd_guard_threshold_usd: Optional[float] = None
     daily_dd_remaining_usd: Optional[float] = None
     daily_dd_guard_blocks_entries_until: Optional[str] = None
+
+
+class StrategyResponse(BaseModel):
+    key: str
+    name: str
+    created_at: str
+    updated_at: str
+    webhook_passthrough_enabled: bool
+    webhook_passthrough_url: Optional[str] = None
 
 
 class EvalEventResponse(BaseModel):

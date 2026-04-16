@@ -19,7 +19,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from .db import Database
+from .db import Database, StrategyRow
 from .eval_manager import EvalManager, resolve_symbol_from_ticker
 from .models import (
     EvalCreateRequest,
@@ -37,6 +37,9 @@ from .models import (
     HealthResponse,
     PriceTickResponse,
     PositionResponse,
+    StrategyCreateRequest,
+    StrategyResponse,
+    StrategyUpdateRequest,
     SuccessResponse,
     TradeResponse,
     TradingViewPayload,
@@ -83,6 +86,17 @@ def _get_strategy_config(strategy_key: str) -> Optional[StrategyConfig]:
     return STRATEGY_REGISTRY.get(strategy_key)
 
 
+def _strategy_response(row: StrategyRow) -> StrategyResponse:
+    return StrategyResponse(
+        key=row.key,
+        name=row.name,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        webhook_passthrough_enabled=bool(row.webhook_passthrough_enabled),
+        webhook_passthrough_url=row.webhook_passthrough_url,
+    )
+
+
 def _is_exit_all_payload(raw_payload: Any) -> bool:
     if not isinstance(raw_payload, dict):
         return False
@@ -108,6 +122,8 @@ def _process_webhook(
 ) -> JSONResponse:
     if not strategy_key:
         return _failure("Missing strategy key", status_code=400)
+    if not db.fetch_strategy(strategy_key):
+        return _failure("Strategy not found", status_code=404)
 
     _forward_webhook_passthrough(strategy_key, raw_body, content_type)
 
@@ -181,17 +197,80 @@ async def webhook_header_key(
     return _process_webhook(x_strategy_key, payload, raw_body, request.headers.get("content-type"))
 
 
-@app.post("/api/evals", response_model=EvalResponse)
-async def create_eval(request: EvalCreateRequest) -> EvalResponse:
-    symbol = request.symbol.upper()
-    if symbol not in {"BTC", "ETH", "SOL"}:
-        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
-    passthrough_enabled, passthrough_url, error = _normalize_webhook_passthrough_settings(
+@app.get("/api/strategies", response_model=list[StrategyResponse])
+async def list_strategies() -> list[StrategyResponse]:
+    rows = db.list_strategies()
+    return [_strategy_response(row) for row in rows]
+
+
+@app.post("/api/strategies", response_model=StrategyResponse)
+async def create_strategy(request: StrategyCreateRequest) -> JSONResponse | StrategyResponse:
+    key = request.key.strip()
+    name = request.name.strip()
+    if not key:
+        return _failure("Strategy key is required", status_code=400)
+    if not name:
+        return _failure("Strategy name is required", status_code=400)
+    if db.fetch_strategy(key):
+        return _failure("Strategy key already exists", status_code=409)
+    enabled, url, error = _normalize_webhook_passthrough_settings(
         request.webhook_passthrough_enabled,
         request.webhook_passthrough_url,
     )
     if error:
         return _failure(error, status_code=400)
+    now = datetime.now(timezone.utc).isoformat()
+    row = StrategyRow(
+        key=key,
+        name=name,
+        created_at=now,
+        updated_at=now,
+        webhook_passthrough_enabled=1 if enabled else 0,
+        webhook_passthrough_url=url,
+    )
+    db.insert_strategy(row)
+    return _strategy_response(row)
+
+
+@app.post("/api/strategies/{strategy_key}", response_model=StrategyResponse)
+async def update_strategy(
+    strategy_key: str,
+    request: StrategyUpdateRequest,
+) -> JSONResponse | StrategyResponse:
+    row = db.fetch_strategy(strategy_key)
+    if not row:
+        return _failure("Strategy not found", status_code=404)
+    name = request.name.strip()
+    if not name:
+        return _failure("Strategy name is required", status_code=400)
+    enabled, url, error = _normalize_webhook_passthrough_settings(
+        request.webhook_passthrough_enabled,
+        request.webhook_passthrough_url,
+    )
+    if error:
+        return _failure(error, status_code=400)
+    updated_at = datetime.now(timezone.utc).isoformat()
+    db.update_strategy(
+        strategy_key,
+        name,
+        1 if enabled else 0,
+        url,
+        updated_at,
+    )
+    updated = db.fetch_strategy(strategy_key)
+    if not updated:
+        return _failure("Strategy not found", status_code=404)
+    return _strategy_response(updated)
+
+
+@app.post("/api/evals", response_model=EvalResponse)
+async def create_eval(request: EvalCreateRequest) -> EvalResponse:
+    symbol = request.symbol.upper()
+    if symbol not in {"BTC", "ETH", "SOL"}:
+        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
+    strategy = db.fetch_strategy(request.strategy_key)
+    if not strategy:
+        return _failure("Strategy not found", status_code=404)
     row = eval_manager.create_eval(
         name=request.name,
         strategy_key=request.strategy_key,
@@ -210,8 +289,8 @@ async def create_eval(request: EvalCreateRequest) -> EvalResponse:
         latency_min_sec=request.latency_min_sec,
         latency_max_sec=request.latency_max_sec,
         dynamic_tp_enabled=request.dynamic_tp_enabled,
-        webhook_passthrough_enabled=passthrough_enabled,
-        webhook_passthrough_url=passthrough_url,
+        webhook_passthrough_enabled=bool(strategy.webhook_passthrough_enabled),
+        webhook_passthrough_url=strategy.webhook_passthrough_url,
     )
     return _eval_response(row)
 
@@ -337,10 +416,19 @@ async def update_webhook_passthrough(
     row = db.fetch_eval(eval_id)
     if not row:
         return _failure("Eval not found", status_code=404)
+    strategy = db.fetch_strategy(row.strategy_key)
+    if not strategy:
+        return _failure("Strategy not found", status_code=404)
     enabled, url, error = _normalize_webhook_passthrough_settings(request.enabled, request.url)
     if error:
         return _failure(error, status_code=400)
-    db.update_eval_webhook_passthrough(eval_id, 1 if enabled else 0, url)
+    db.update_strategy(
+        strategy.key,
+        strategy.name,
+        1 if enabled else 0,
+        url,
+        datetime.now(timezone.utc).isoformat(),
+    )
     return _eval_response(db.fetch_eval(eval_id))
 
 
@@ -778,6 +866,7 @@ def _insert_strategy_run(
 
 
 def _eval_response(row: Any) -> EvalResponse:
+    strategy = db.fetch_strategy(row.strategy_key)
     open_positions = db.list_open_positions_for_eval(row.id)
     last_price = None
     open_pnl = None
@@ -855,6 +944,7 @@ def _eval_response(row: Any) -> EvalResponse:
         id=row.id,
         name=row.name,
         strategy_key=row.strategy_key,
+        strategy_name=strategy.name if strategy else None,
         symbol=row.symbol,
         status=row.status,
         created_at=row.created_at,
@@ -876,8 +966,8 @@ def _eval_response(row: Any) -> EvalResponse:
         latency_min_sec=row.latency_min_sec,
         latency_max_sec=row.latency_max_sec,
         dynamic_tp_enabled=bool(row.dynamic_tp_enabled),
-        webhook_passthrough_enabled=bool(row.webhook_passthrough_enabled),
-        webhook_passthrough_url=row.webhook_passthrough_url,
+        webhook_passthrough_enabled=bool(strategy.webhook_passthrough_enabled) if strategy else bool(row.webhook_passthrough_enabled),
+        webhook_passthrough_url=strategy.webhook_passthrough_url if strategy else row.webhook_passthrough_url,
         profit_target_pct=row.profit_target_pct,
         profit_target_equity=summary.get("profit_target_equity"),
         profit_remaining_usd=summary.get("profit_remaining_usd"),

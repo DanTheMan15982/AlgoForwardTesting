@@ -21,6 +21,7 @@ type EvalDetail = {
   status: string;
   symbol: string;
   strategy_key: string;
+  strategy_name?: string | null;
   starting_balance: number;
   current_balance: number;
   current_equity: number;
@@ -1475,9 +1476,9 @@ export default function EvalDetailPage() {
                   }}
                 />
                 <div>
-                  <div className="font-medium">Webhook Passthrough</div>
+                  <div className="font-medium">Strategy Webhook Passthrough</div>
                   <div className="text-xs text-slate-500">
-                    Forward each incoming webhook payload unchanged to a full internal URL.
+                    This setting is stored on the linked strategy and shared by every eval using it.
                   </div>
                 </div>
               </label>
@@ -1576,7 +1577,8 @@ export default function EvalDetailPage() {
             <div className="flex gap-6">
               <div>
                 <div className="text-slate-500">Strategy</div>
-                <div className="text-slate-100">{detail.strategy_key}</div>
+                <div className="text-slate-100">{detail.strategy_name || detail.strategy_key}</div>
+                <div className="text-xs text-slate-500">{detail.strategy_key}</div>
               </div>
               <div>
                 <div className="text-slate-500">Symbol</div>

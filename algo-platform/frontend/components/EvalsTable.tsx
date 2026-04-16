@@ -156,7 +156,12 @@ function EvalTableRow({ evalRow, price, now }: EvalRowProps) {
         </div>
       </TableCell>
       <TableCell>{evalRow.symbol}</TableCell>
-      <TableCell>{evalRow.strategy_key}</TableCell>
+      <TableCell>
+        <div>{evalRow.strategy_name || evalRow.strategy_key}</div>
+        {evalRow.strategy_name ? (
+          <div className="text-xs text-slate-500">{evalRow.strategy_key}</div>
+        ) : null}
+      </TableCell>
       <TableCell className={`tabular-nums min-w-[110px] text-right transition-colors duration-700 ease-out ${equityFlashClass}`}>
         {formatCurrency(evalRow.current_equity)}
       </TableCell>
