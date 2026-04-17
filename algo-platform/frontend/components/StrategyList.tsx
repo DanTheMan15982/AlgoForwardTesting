@@ -44,6 +44,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
   const [form, setForm] = useState<StrategyFormState>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [instrumentQuery, setInstrumentQuery] = useState("");
+  const [instrumentPickerOpen, setInstrumentPickerOpen] = useState(false);
   const [instruments, setInstruments] = useState<MatrixInstrument[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -101,6 +102,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
     setForm(emptyForm);
     setError(null);
     setInstrumentQuery("");
+    setInstrumentPickerOpen(false);
   };
 
   const openCreate = () => {
@@ -178,11 +180,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-neonSoft">Strategies</p>
-          <h2 className="text-2xl font-semibold text-slate-100">Webhook routing lives here</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Keep the strategy key stable, route it to one feed instrument, and reuse it across sim accounts.
-          </p>
+          <h2 className="text-2xl font-semibold text-slate-100">Strategies</h2>
         </div>
         <Dialog
           open={open}
@@ -194,12 +192,10 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
           <DialogTrigger asChild>
             <Button variant="outline" onClick={openCreate}>New Strategy</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingKey ? "Edit strategy" : "Create strategy"}</DialogTitle>
-              <DialogDescription>
-                Choose one concrete instrument. The strategy will only accept webhook tickers that map to that feed.
-              </DialogDescription>
+              <DialogDescription>Select a ticker and save routing settings.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4">
               <div className="grid gap-4 rounded-xl border border-border/70 bg-panelSoft/40 p-4 md:grid-cols-2">
@@ -226,20 +222,9 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                 <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Instrument</div>
-                    <div className="mt-1 text-sm text-slate-400">
-                      Search by TradingView-style code, exchange, or instrument id.
-                    </div>
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    Showing {filteredInstruments.length} result{filteredInstruments.length === 1 ? "" : "s"}
                   </div>
                 </div>
                 <div className="grid gap-3">
-                  <Input
-                    value={instrumentQuery}
-                    placeholder="Search BTCUSD, BTCUSDT.P, OKX, Bybit..."
-                    onChange={(event) => setInstrumentQuery(event.target.value)}
-                  />
                   {selectedInstrument ? (
                     <div className="rounded-lg border border-neon/40 bg-neon/10 p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -254,56 +239,21 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                           <Badge variant="default">{selectedInstrument.instrument_id}</Badge>
                         </div>
                       </div>
-                      <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
-                        <div>
-                          <div className="uppercase tracking-[0.18em] text-slate-500">Display Name</div>
-                          <div className="mt-1 text-slate-300">{selectedInstrument.display_name}</div>
-                        </div>
-                        <div>
-                          <div className="uppercase tracking-[0.18em] text-slate-500">Exchange Feed</div>
-                          <div className="mt-1 text-slate-300">{selectedInstrument.exchange}</div>
-                        </div>
-                      </div>
+                      <div className="mt-3 text-xs text-slate-400">{selectedInstrument.display_name}</div>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-dashed border-border/70 bg-panel/40 px-4 py-3 text-sm text-slate-500">
-                      Pick one instrument before saving the strategy.
+                      Select a ticker.
                     </div>
                   )}
-                  <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-panelSoft/40 p-2">
-                    {filteredInstruments.length ? (
-                      filteredInstruments.map((instrument) => {
-                        const isSelected = form.symbol === instrument.instrument_id;
-                        return (
-                          <button
-                            key={instrument.instrument_id}
-                            type="button"
-                            className={
-                              isSelected
-                                ? "flex w-full items-start justify-between rounded-lg border border-neon/60 bg-neon/10 px-3 py-3 text-left"
-                                : "flex w-full items-start justify-between rounded-lg border border-border/60 bg-panel/60 px-3 py-3 text-left hover:border-border"
-                            }
-                            onClick={() => setForm({ ...form, symbol: instrument.instrument_id })}
-                          >
-                            <div className="min-w-0">
-                              <div className="font-mono text-sm text-slate-100">
-                                {tradingviewTickerForInstrument(instrument)}
-                              </div>
-                              <div className="text-xs text-slate-400">{instrument.display_name}</div>
-                            </div>
-                            <div className="ml-3 flex shrink-0 flex-col items-end gap-1">
-                              <Badge variant="info">{exchangeFeedLabel(instrument)}</Badge>
-                              <span className="text-[11px] text-slate-500">{instrument.instrument_id}</span>
-                            </div>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-slate-500">
-                        No instruments match that search.
-                      </div>
-                    )}
-                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setInstrumentPickerOpen(true)}
+                    disabled={!instruments.length}
+                  >
+                    Select Ticker
+                  </Button>
                 </div>
               </div>
 
@@ -319,7 +269,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                   <div>
                     <div className="font-medium">Webhook passthrough</div>
                     <div className="text-xs text-slate-500">
-                      Forward each webhook payload unchanged to a full internal URL.
+                      Forward webhook payloads to this URL.
                     </div>
                   </div>
                 </label>
@@ -335,7 +285,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
 
               {selected && typeof window !== "undefined" ? (
                 <div className="rounded-lg border border-border/70 bg-panelSoft/60 p-3 text-xs text-slate-400">
-                  Public webhook: {window.location.origin}/api/webhook/{selected.key}
+                  Webhook: {window.location.origin}/api/webhook/{selected.key}
                 </div>
               ) : null}
               {error ? (
@@ -346,6 +296,70 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
               <Button onClick={handleSubmit} disabled={saveDisabled}>
                 {saving ? "Saving..." : editingKey ? "Save Strategy" : "Create Strategy"}
               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={instrumentPickerOpen}
+          onOpenChange={(next) => {
+            setInstrumentPickerOpen(next);
+            if (!next) setInstrumentQuery("");
+          }}
+        >
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Select ticker</DialogTitle>
+              <DialogDescription>Search tickers.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <Input
+                  value={instrumentQuery}
+                  placeholder="Search BTCUSD, BTCUSDT.P, OKX, Bybit..."
+                  onChange={(event) => setInstrumentQuery(event.target.value)}
+                />
+                <div className="text-xs text-slate-500">
+                  {filteredInstruments.length} result{filteredInstruments.length === 1 ? "" : "s"}
+                </div>
+              </div>
+              <div className="max-h-96 space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-panelSoft/40 p-2">
+                {filteredInstruments.length ? (
+                  filteredInstruments.map((instrument) => {
+                    const isSelected = form.symbol === instrument.instrument_id;
+                    return (
+                      <button
+                        key={instrument.instrument_id}
+                        type="button"
+                        className={
+                          isSelected
+                            ? "flex w-full items-start justify-between rounded-lg border border-neon/60 bg-neon/10 px-3 py-3 text-left"
+                            : "flex w-full items-start justify-between rounded-lg border border-border/60 bg-panel/60 px-3 py-3 text-left hover:border-border"
+                        }
+                        onClick={() => {
+                          setForm({ ...form, symbol: instrument.instrument_id });
+                          setInstrumentPickerOpen(false);
+                          setInstrumentQuery("");
+                        }}
+                      >
+                        <div className="min-w-0">
+                          <div className="font-mono text-sm text-slate-100">
+                            {tradingviewTickerForInstrument(instrument)}
+                          </div>
+                          <div className="text-xs text-slate-400">{instrument.display_name}</div>
+                        </div>
+                        <div className="ml-3 flex shrink-0 flex-col items-end gap-1">
+                          <Badge variant="info">{exchangeFeedLabel(instrument)}</Badge>
+                          <span className="text-[11px] text-slate-500">{instrument.instrument_id}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                    <div className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-sm text-slate-500">
+                    No matches.
+                  </div>
+                )}
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -371,13 +385,10 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                       {instrument ? (
                         <Badge variant="default">{exchangeFeedLabel(instrument)}</Badge>
                       ) : null}
-                      <Badge variant={strategy.webhook_passthrough_enabled ? "success" : "warning"}>
-                        {strategy.webhook_passthrough_enabled ? "Passthrough On" : "Passthrough Off"}
-                      </Badge>
                     </div>
                     <div className="grid gap-3 text-sm md:grid-cols-3">
                       <div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Feed Instrument</div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Ticker</div>
                         <div className="mt-1 text-slate-300">{strategy.symbol}</div>
                       </div>
                       <div className="md:col-span-2">
@@ -389,7 +400,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                         </div>
                       </div>
                       <div className="md:col-span-3">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Passthrough</div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Forward URL</div>
                         <div className="mt-1 break-all text-slate-400">
                           {strategy.webhook_passthrough_enabled
                             ? strategy.webhook_passthrough_url || "(enabled, URL not set)"
@@ -400,7 +411,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     <div className="rounded-lg border border-border/60 bg-panelSoft/60 px-3 py-2 text-sm text-slate-300">
-                      Active sim accounts: {activeEvalCounts[strategy.key] ?? 0}
+                      Active sims: {activeEvalCounts[strategy.key] ?? 0}
                     </div>
                     <Button variant="outline" onClick={() => openEdit(strategy)}>
                       Edit
@@ -412,7 +423,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
           })
         ) : (
           <div className="rounded-xl border border-border/70 bg-panel/75 p-6 text-sm text-slate-400">
-            No strategies yet. Create one before spinning up sim accounts.
+            No strategies yet.
           </div>
         )}
       </div>

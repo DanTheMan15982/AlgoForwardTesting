@@ -37,6 +37,86 @@ body {
   font-family: var(--font-mono);
 }
 
+.dash-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(44, 59, 84, 0.8);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(0, 240, 255, 0.13), transparent 40%),
+    radial-gradient(circle at 100% 0%, rgba(255, 61, 129, 0.12), transparent 45%),
+    rgba(12, 18, 30, 0.86);
+  padding: 1.25rem;
+}
+
+.dash-chip {
+  border-radius: 9999px;
+  border: 1px solid rgba(64, 84, 112, 0.75);
+  background: rgba(19, 27, 42, 0.6);
+  color: #9aa8c0;
+  padding: 0.5rem 0.95rem;
+  font-size: 0.85rem;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.dash-chip:hover {
+  color: #e2e8f0;
+  border-color: rgba(98, 118, 146, 0.95);
+}
+
+.dash-chip-active {
+  border-color: rgba(0, 240, 255, 0.5);
+  color: #00f0ff;
+  background: rgba(0, 240, 255, 0.09);
+}
+
+.dash-card {
+  border: 1px solid rgba(44, 59, 84, 0.8);
+  background: linear-gradient(180deg, rgba(16, 24, 38, 0.95), rgba(12, 17, 28, 0.95));
+}
+
+.dash-card-market {
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.1);
+}
+
+.dash-card-perf {
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.1);
+}
+
+.dash-card-risk {
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.12);
+}
+
+.dash-mini {
+  border: 1px solid rgba(44, 59, 84, 0.8);
+  border-radius: 0.75rem;
+  background: rgba(21, 30, 45, 0.7);
+  padding: 0.85rem;
+}
+
+.dash-mini-market {
+  box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.08);
+}
+
+.dash-mini-perf {
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.08);
+}
+
+.dash-mini-risk {
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.1);
+}
+
+.dash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(44, 59, 84, 0.65);
+  border-radius: 0.7rem;
+  background: rgba(20, 28, 42, 0.7);
+  padding: 0.65rem 0.75rem;
+}
+
 @layer utilities {
   .animate-pulse-slow {
     animation: pulse-slow 3.2s ease-in-out infinite;

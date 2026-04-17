@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger
@@ -154,15 +153,12 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
         <div className="flex h-full flex-col">
           <DialogHeader className="px-5 pt-5">
             <DialogTitle>Create sim account</DialogTitle>
-            <DialogDescription>
-              Attach the sim account to a stored strategy. Strategy routing owns ticker and webhook configuration.
-            </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto px-5 pb-6">
             <div className="grid gap-4">
               {!strategies.length ? (
                 <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-slate-200">
-                  Create a strategy in the Strategies tab before creating a sim account.
+                  Create a strategy first.
                 </div>
               ) : null}
               <div>
@@ -239,7 +235,6 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
               </div>
               {selectedStrategy ? (
                 <div className="rounded-lg border border-border/70 bg-panelSoft/60 p-4 text-sm">
-                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Selected Strategy</div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <div className="font-medium text-slate-100">{selectedStrategy.name}</div>
                     <Badge variant="default">{selectedStrategy.key}</Badge>
@@ -271,7 +266,7 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
                 </div>
               ) : null}
               <div className="grid gap-4 rounded-lg border border-border/70 bg-panelSoft/40 p-4">
-                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Risk Profile</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Risk</div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Starting balance</div>
@@ -315,7 +310,7 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
               </div>
               <details className="rounded-lg border border-border/70 bg-panelSoft/60 p-3">
                 <summary className="cursor-pointer text-sm font-medium text-slate-200">
-                  Advanced settings
+                  Advanced
                 </summary>
                 <div className="mt-4 grid gap-4">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -414,9 +409,6 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
                       />
                       <div>
                         <div className="font-medium">Dynamic TP</div>
-                        <div className="text-xs text-slate-500">
-                          Ignore TP from entry webhooks and exit only through later exit signals.
-                        </div>
                       </div>
                     </label>
                   </div>
@@ -430,17 +422,7 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
               {createdId && selectedStrategy ? (
                 <div className="rounded-lg border border-border/80 bg-panelSoft/60 p-4 text-sm text-slate-300">
                   <p className="font-medium text-neon">Sim account created</p>
-                  <p className="mt-2 text-xs text-slate-500">
-                    {form.account_type === "REGULAR"
-                      ? "Regular account"
-                      : `Prop firm • ${form.prop_firm_mode === "LIVE_SIM" ? "Live Sim" : "Eval"}`}
-                  </p>
-                  <p className="mt-2">Webhook URL</p>
-                  <p className="break-all text-xs text-slate-400">{webhookUrl}</p>
-                  <p className="mt-2">TradingView JSON</p>
-                  <pre className="mt-2 text-xs text-slate-400">
-{`{\n  "ticker": "${selectedInstrument ? tradingviewTickerForInstrument(selectedInstrument) : selectedStrategy.symbol}",\n  "side": "LONG",\n  "entry": 44000,\n  "stop": 42000,\n  "tp": 46000\n}`}
-                  </pre>
+                  <p className="mt-2 break-all text-xs text-slate-400">{webhookUrl}</p>
                 </div>
               ) : null}
             </div>
