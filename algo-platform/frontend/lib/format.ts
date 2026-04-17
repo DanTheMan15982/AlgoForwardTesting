@@ -12,6 +12,18 @@ export function formatNumber(value: number) {
   }).format(value);
 }
 
+export function formatPriceValue(value: number) {
+  const decimals =
+    value >= 1000 ? 2 :
+    value >= 100 ? 3 :
+    value >= 1 ? 4 :
+    6;
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: decimals
+  }).format(value);
+}
+
 export function formatPercent(value: number) {
   return `${(value * 100).toFixed(2)}%`;
 }

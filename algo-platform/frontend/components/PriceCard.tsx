@@ -8,9 +8,10 @@ type PriceCardProps = {
   symbol: string;
   price?: number | null;
   ts?: string | null;
+  subtitle?: string;
 };
 
-export function PriceCard({ symbol, price, ts }: PriceCardProps) {
+export function PriceCard({ symbol, price, ts, subtitle }: PriceCardProps) {
   const { direction, flash } = useFlashDelta(`price-${symbol}`, price ?? null, 350);
   const flashClass =
     flash && direction === "up"
@@ -22,7 +23,10 @@ export function PriceCard({ symbol, price, ts }: PriceCardProps) {
     <Card className="relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-neon/10 via-transparent to-neonMagenta/10" />
       <CardHeader className="relative">
-        <CardTitle className="text-lg tracking-[0.3em] text-slate-100">{symbol}</CardTitle>
+        <CardTitle className="text-lg tracking-[0.2em] text-slate-100">{symbol}</CardTitle>
+        {subtitle ? (
+          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{subtitle}</div>
+        ) : null}
       </CardHeader>
       <CardContent className="relative flex items-end justify-between">
         <div>

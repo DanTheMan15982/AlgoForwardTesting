@@ -20,7 +20,13 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .db import Database, StrategyRow
-from .eval_manager import EvalManager, resolve_symbol_from_ticker
+from .eval_manager import EvalManager
+from .instruments import (
+    is_supported_instrument,
+    matches_instrument_ticker,
+    resolve_instrument_from_ticker,
+)
+from .market_data_matrix import MARKET_DATA_MATRIX
 from .models import (
     EvalCreateRequest,
     EvalCostUpdateRequest,
@@ -35,6 +41,7 @@ from .models import (
     EvalResponse,
     FailureResponse,
     HealthResponse,
+    MarketDataMatrixRowResponse,
     PriceTickResponse,
     PositionResponse,
     StrategyCreateRequest,
@@ -162,9 +169,19 @@ def _process_webhook(
     except ValueError as exc:
         return _failure(str(exc), status_code=400)
 
-    symbol = resolve_symbol_from_ticker(payload.ticker)
-    if symbol is None:
-        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
+    strategy = db.fetch_strategy(strategy_key)
+    if not strategy:
+        return _failure("Strategy not found", status_code=404)
+
+    symbol = strategy.symbol
+    if not matches_instrument_ticker(symbol, payload.ticker):
+        resolved = resolve_instrument_from_ticker(payload.ticker)
+        if resolved is None:
+            return _failure("Unsupported ticker for configured strategy instrument", status_code=400)
+        return _failure(
+            f"Ticker routes to {resolved}, but strategy is configured for {symbol}",
+            status_code=400,
+        )
 
     logger.info(
         "signal | %s | %s | %s | %s | %s | %s",
@@ -228,8 +245,8 @@ async def create_strategy(request: StrategyCreateRequest) -> JSONResponse | Stra
         return _failure("Strategy key is required", status_code=400)
     if not name:
         return _failure("Strategy name is required", status_code=400)
-    if symbol not in {"BTC", "ETH", "SOL"}:
-        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
+    if not is_supported_instrument(symbol):
+        return _failure("Unsupported instrument", status_code=400)
     if db.fetch_strategy(key):
         return _failure("Strategy key already exists", status_code=409)
     enabled, url, error = _normalize_webhook_passthrough_settings(
@@ -264,8 +281,8 @@ async def update_strategy(
     symbol = request.symbol.strip().upper()
     if not name:
         return _failure("Strategy name is required", status_code=400)
-    if symbol not in {"BTC", "ETH", "SOL"}:
-        return _failure("Unsupported symbol (only BTC, ETH, SOL)", status_code=400)
+    if not is_supported_instrument(symbol):
+        return _failure("Unsupported instrument", status_code=400)
     enabled, url, error = _normalize_webhook_passthrough_settings(
         request.webhook_passthrough_enabled,
         request.webhook_passthrough_url,
@@ -292,7 +309,7 @@ async def create_eval(request: EvalCreateRequest) -> EvalResponse:
     strategy = db.fetch_strategy(request.strategy_key)
     if not strategy:
         return _failure("Strategy not found", status_code=404)
-    if strategy.symbol not in {"BTC", "ETH", "SOL"}:
+    if not is_supported_instrument(strategy.symbol):
         return _failure("Strategy ticker is not configured", status_code=400)
     account_type, prop_firm_mode, account_error = _normalize_account_type(
         request.account_type,
@@ -569,6 +586,36 @@ async def get_prices() -> dict[str, PriceTickResponse]:
     }
 
 
+@app.get("/api/market-data/matrix", response_model=list[MarketDataMatrixRowResponse])
+async def get_market_data_matrix() -> list[MarketDataMatrixRowResponse]:
+    feed, ages = price_service.get_health()
+    ticks = await get_prices()
+    rows: list[MarketDataMatrixRowResponse] = []
+    for item in MARKET_DATA_MATRIX:
+        tick = ticks.get(item.instrument_id)
+        rows.append(
+            MarketDataMatrixRowResponse(
+                instrument_id=item.instrument_id,
+                display_name=item.display_name,
+                asset_class=item.asset_class,
+                market=item.market,
+                exchange=item.exchange,
+                provider=item.provider,
+                provider_type=item.provider_type,
+                external_ticker=item.external_ticker,
+                stream_status=item.stream_status if item.instrument_id not in ticks else "live_now",
+                cadence_target=item.cadence_target,
+                free_access=item.free_access,
+                current_price=tick.price if tick else None,
+                price_ts=tick.ts if tick else None,
+                price_source=tick.source if tick else (feed if item.instrument_id in ages else None),
+                update_age_ms=ages.get(item.instrument_id),
+                notes=item.notes,
+            )
+        )
+    return rows
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     feed, ages = price_service.get_health()
@@ -758,10 +805,17 @@ async def system_status() -> dict[str, Any]:
 
 @app.on_event("startup")
 async def startup() -> None:
+    logger.info("startup | db.init begin")
     db.init()
+    logger.info("startup | db.init done")
+    logger.info("startup | price_service.start begin")
     await price_service.start()
+    logger.info("startup | price_service.start done")
+    logger.info("startup | eval_manager.start begin")
     await eval_manager.start()
+    logger.info("startup | eval_manager.start done")
     app.state.wal_task = asyncio.create_task(_wal_checkpoint_loop())
+    logger.info("startup | wal checkpoint loop scheduled")
 
 
 @app.on_event("shutdown")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,7 +11,9 @@ import {
   DialogTrigger
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { exchangeFeedLabel, tradingviewTickerForInstrument, type MatrixInstrument } from "@/lib/instruments";
 import { useRealtimeStore } from "@/lib/store";
 import type { StrategySummary } from "@/lib/strategies";
 
@@ -29,6 +31,8 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [instruments, setInstruments] = useState<MatrixInstrument[]>([]);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "",
     strategy_key: "",
@@ -55,6 +59,20 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
     [strategies, form.strategy_key]
   );
 
+  useEffect(() => {
+    const load = async () => {
+      const res = await fetch("/api/market-data/matrix");
+      if (!res.ok) return;
+      setInstruments(await res.json());
+    };
+    load();
+  }, []);
+
+  const selectedInstrument = useMemo(
+    () => instruments.find((instrument) => instrument.instrument_id === selectedStrategy?.symbol) ?? null,
+    [instruments, selectedStrategy]
+  );
+
   const normalizePercent = (value: string, fallback: number) => {
     const parsed = Number(value);
     if (Number.isNaN(parsed)) return fallback / 100;
@@ -64,6 +82,7 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
   const resetState = () => {
     setCreatedId(null);
     setError(null);
+    setSaving(false);
   };
 
   const handleSubmit = async () => {
@@ -72,8 +91,12 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
       setError("Choose a strategy first.");
       return;
     }
+    if (!form.name.trim()) {
+      setError("Sim account name is required.");
+      return;
+    }
     const payload = {
-      name: form.name,
+      name: form.name.trim(),
       strategy_key: form.strategy_key,
       account_type: form.account_type,
       prop_firm_mode: form.account_type === "PROP_FIRM" ? form.prop_firm_mode : null,
@@ -95,19 +118,24 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
       dynamic_tp_enabled: form.dynamic_tp_enabled
     };
 
-    const res = await fetch("/api/evals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setError(data?.reason ?? "Failed to create sim account.");
-      return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/evals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.reason ?? "Failed to create sim account.");
+        return;
+      }
+      const data = await res.json();
+      upsertEval(data);
+      setCreatedId(data.id);
+    } finally {
+      setSaving(false);
     }
-    const data = await res.json();
-    upsertEval(data);
-    setCreatedId(data.id);
   };
 
   const webhookUrl = typeof window !== "undefined" && selectedStrategy
@@ -210,57 +238,79 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
                 </Select>
               </div>
               {selectedStrategy ? (
-                <div className="rounded-lg border border-border/70 bg-panelSoft/60 p-3 text-sm">
-                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Strategy Webhook</div>
-                  <div className="mt-2 text-slate-100 break-all">{webhookUrl}</div>
-                  <div className="mt-2 text-xs text-slate-500">
-                    Ticker: {selectedStrategy.symbol}
+                <div className="rounded-lg border border-border/70 bg-panelSoft/60 p-4 text-sm">
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Selected Strategy</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <div className="font-medium text-slate-100">{selectedStrategy.name}</div>
+                    <Badge variant="default">{selectedStrategy.key}</Badge>
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    Passthrough: {selectedStrategy.webhook_passthrough_enabled
-                      ? selectedStrategy.webhook_passthrough_url || "(enabled, URL not set)"
-                      : "Disabled"}
+                  {selectedInstrument ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Badge variant="info">{tradingviewTickerForInstrument(selectedInstrument)}</Badge>
+                      <Badge variant="default">{exchangeFeedLabel(selectedInstrument)}</Badge>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-slate-500">
+                      Ticker: {selectedStrategy.symbol}
+                    </div>
+                  )}
+                  <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
+                    <div>
+                      <div className="uppercase tracking-[0.18em] text-slate-500">Webhook URL</div>
+                      <div className="mt-1 break-all text-slate-300">{webhookUrl}</div>
+                    </div>
+                    <div>
+                      <div className="uppercase tracking-[0.18em] text-slate-500">Passthrough</div>
+                      <div className="mt-1 break-all text-slate-400">
+                        {selectedStrategy.webhook_passthrough_enabled
+                          ? selectedStrategy.webhook_passthrough_url || "(enabled, URL not set)"
+                          : "Disabled"}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : null}
-              <div>
-                <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Starting balance</div>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="Starting balance"
-                  value={form.starting_balance}
-                  onChange={(event) => setForm({ ...form, starting_balance: event.target.value })}
-                />
-              </div>
-              <div>
-                <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Fixed risk USD</div>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="Fixed risk USD"
-                  value={form.risk_usd}
-                  onChange={(event) => setForm({ ...form, risk_usd: event.target.value })}
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Max DD %</div>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    value={form.max_dd_pct}
-                    onChange={(event) => setForm({ ...form, max_dd_pct: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Daily DD %</div>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    value={form.daily_dd_pct}
-                    onChange={(event) => setForm({ ...form, daily_dd_pct: event.target.value })}
-                  />
+              <div className="grid gap-4 rounded-lg border border-border/70 bg-panelSoft/40 p-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Risk Profile</div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Starting balance</div>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="Starting balance"
+                      value={form.starting_balance}
+                      onChange={(event) => setForm({ ...form, starting_balance: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Fixed risk USD</div>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="Fixed risk USD"
+                      value={form.risk_usd}
+                      onChange={(event) => setForm({ ...form, risk_usd: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Max DD %</div>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      value={form.max_dd_pct}
+                      onChange={(event) => setForm({ ...form, max_dd_pct: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Daily DD %</div>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      value={form.daily_dd_pct}
+                      onChange={(event) => setForm({ ...form, daily_dd_pct: event.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
               <details className="rounded-lg border border-border/70 bg-panelSoft/60 p-3">
@@ -379,7 +429,7 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
               ) : null}
               {createdId && selectedStrategy ? (
                 <div className="rounded-lg border border-border/80 bg-panelSoft/60 p-4 text-sm text-slate-300">
-                  <p className="text-neon">Sim account created</p>
+                  <p className="font-medium text-neon">Sim account created</p>
                   <p className="mt-2 text-xs text-slate-500">
                     {form.account_type === "REGULAR"
                       ? "Regular account"
@@ -389,15 +439,19 @@ export function NewEvalModal({ strategies }: NewEvalModalProps) {
                   <p className="break-all text-xs text-slate-400">{webhookUrl}</p>
                   <p className="mt-2">TradingView JSON</p>
                   <pre className="mt-2 text-xs text-slate-400">
-{`{\n  "ticker": "${selectedStrategy.symbol}USDT",\n  "side": "LONG",\n  "entry": 44000,\n  "stop": 42000,\n  "tp": 46000\n}`}
+{`{\n  "ticker": "${selectedInstrument ? tradingviewTickerForInstrument(selectedInstrument) : selectedStrategy.symbol}",\n  "side": "LONG",\n  "entry": 44000,\n  "stop": 42000,\n  "tp": 46000\n}`}
                   </pre>
                 </div>
               ) : null}
             </div>
           </div>
           <div className="border-t border-border/70 bg-panel/80 px-5 py-4">
-            <Button className="w-full" onClick={handleSubmit} disabled={!strategies.length}>
-              Create Sim Account
+            <Button
+              className="w-full"
+              onClick={handleSubmit}
+              disabled={!strategies.length || saving || !form.strategy_key || !form.name.trim()}
+            >
+              {saving ? "Creating..." : "Create Sim Account"}
             </Button>
           </div>
         </div>

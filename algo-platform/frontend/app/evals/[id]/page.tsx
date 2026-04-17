@@ -13,6 +13,7 @@ import { EventList } from "@/components/EventList";
 import { formatCountdown, formatCurrency, formatPercent } from "@/lib/format";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { exchangeFeedLabel, tradingviewTickerForInstrument, type MatrixInstrument } from "@/lib/instruments";
 import { useFlashDelta } from "@/lib/useFlashDelta";
 
 type EvalDetail = {
@@ -341,6 +342,7 @@ export default function EvalDetailPage() {
   const [dailyDdGuardAutoResume, setDailyDdGuardAutoResume] = useState(true);
   const [dailyDdGuardCloseOpen, setDailyDdGuardCloseOpen] = useState(false);
   const [dailyDdGuardDirty, setDailyDdGuardDirty] = useState(false);
+  const [instruments, setInstruments] = useState<MatrixInstrument[]>([]);
 
   useEffect(() => {
     if (!evalId) return;
@@ -348,11 +350,12 @@ export default function EvalDetailPage() {
     let cancelled = false;
 
     const load = async () => {
-      const [detailRes, tradesRes, eventsRes, equityRes] = await Promise.all([
+      const [detailRes, tradesRes, eventsRes, equityRes, instrumentsRes] = await Promise.all([
         fetch(`/api/evals/${evalId}`),
         fetch(`/api/evals/${evalId}/trades`),
         fetch(`/api/evals/${evalId}/events?limit=50`),
-        fetch(`/api/evals/${evalId}/equity-series?limit=500`)
+        fetch(`/api/evals/${evalId}/equity-series?limit=500`),
+        fetch("/api/market-data/matrix")
       ]);
       if (cancelled) return;
       if (detailRes.status === 404) {
@@ -372,6 +375,9 @@ export default function EvalDetailPage() {
       if (equityRes.ok) {
         setEquitySeries(await equityRes.json());
       }
+      if (instrumentsRes.ok) {
+        setInstruments(await instrumentsRes.json());
+      }
     };
 
     load();
@@ -382,6 +388,11 @@ export default function EvalDetailPage() {
       if (interval) clearInterval(interval);
     };
   }, [evalId, router]);
+
+  const selectedInstrument = useMemo(
+    () => instruments.find((instrument) => instrument.instrument_id === detail?.symbol) ?? null,
+    [detail?.symbol, instruments]
+  );
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -1561,7 +1572,7 @@ export default function EvalDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <div>
-              <div className="text-slate-500">Webhook URL</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Webhook URL</div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="break-all text-slate-100">
                   {typeof window !== "undefined"
@@ -1581,29 +1592,34 @@ export default function EvalDetailPage() {
                 </Button>
               </div>
             </div>
-            <div className="flex gap-6">
+            <div className="grid gap-4 rounded-lg border border-border/70 bg-panelSoft/50 p-4 md:grid-cols-3">
               <div>
-                <div className="text-slate-500">Strategy</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Strategy</div>
                 <div className="text-slate-100">{detail.strategy_name || detail.strategy_key}</div>
                 <div className="text-xs text-slate-500">{detail.strategy_key}</div>
               </div>
               <div>
-                <div className="text-slate-500">Symbol</div>
-                <div className="text-slate-100">{detail.symbol}</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Ticker</div>
+                <div className="text-slate-100">
+                  {selectedInstrument ? tradingviewTickerForInstrument(selectedInstrument) : detail.symbol}
+                </div>
+                {selectedInstrument ? (
+                  <div className="text-xs text-slate-500">{exchangeFeedLabel(selectedInstrument)}</div>
+                ) : null}
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Passthrough</div>
+                <div className="break-all text-slate-100">
+                  {detail.webhook_passthrough_enabled
+                    ? detail.webhook_passthrough_url || "(enabled, URL not set)"
+                    : "Disabled"}
+                </div>
               </div>
             </div>
             <div>
-              <div className="text-slate-500">Passthrough URL</div>
-              <div className="text-slate-100 break-all">
-                {detail.webhook_passthrough_enabled
-                  ? detail.webhook_passthrough_url || "(enabled, URL not set)"
-                  : "Disabled"}
-              </div>
-            </div>
-            <div>
-              <div className="text-slate-500">TradingView JSON</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">TradingView JSON</div>
               <div className="mt-2 rounded-lg border border-border/80 bg-panelSoft/60 p-3 text-xs text-slate-300">
-                {`{\"ticker\":\"${detail.symbol}USDT\",\"side\":\"LONG\",\"entry\":null,\"stop\":93400,\"tp\":94800}`}
+                {`{\"ticker\":\"${selectedInstrument ? tradingviewTickerForInstrument(selectedInstrument) : detail.symbol}\",\"side\":\"LONG\",\"entry\":null,\"stop\":93400,\"tp\":94800}`}
               </div>
               <Button
                 variant="outline"
@@ -1611,7 +1627,7 @@ export default function EvalDetailPage() {
                 className="mt-2"
                 onClick={() =>
                   navigator.clipboard.writeText(
-                    `{\"ticker\":\"${detail.symbol}USDT\",\"side\":\"LONG\",\"entry\":null,\"stop\":93400,\"tp\":94800}`
+                    `{\"ticker\":\"${selectedInstrument ? tradingviewTickerForInstrument(selectedInstrument) : detail.symbol}\",\"side\":\"LONG\",\"entry\":null,\"stop\":93400,\"tp\":94800}`
                   )
                 }
               >

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Space_Grotesk, Space_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SessionIndicator } from "@/components/SessionIndicator";
@@ -29,6 +30,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <p className="mt-2 text-xs text-slate-500">
                   Live sim • Local-only • No auth
                 </p>
+                <nav className="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.25em] text-slate-400">
+                  <Link
+                    href="/"
+                    className="rounded-full border border-border/70 bg-panel/50 px-3 py-1 transition-colors hover:border-neon/60 hover:text-white"
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/market-data"
+                    className="rounded-full border border-border/70 bg-panel/50 px-3 py-1 transition-colors hover:border-neon/60 hover:text-white"
+                  >
+                    Market Data
+                  </Link>
+                </nav>
               </div>
               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
                 <SessionIndicator />

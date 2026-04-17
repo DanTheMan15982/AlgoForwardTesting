@@ -1467,6 +1467,30 @@ class Database:
             cur = self._conn.execute("SELECT * FROM prices")
             return [PriceRow(**row) for row in cur.fetchall()]
 
+    def load_latest_prices_for_symbols(self, symbols: list[str], timeframe: str) -> list[PriceRow]:
+        if not symbols:
+            return []
+        placeholders = ",".join("?" for _ in symbols)
+        with self._lock:
+            cur = self._conn.execute(
+                f"""
+                SELECT p.*
+                FROM prices p
+                JOIN (
+                    SELECT symbol, MAX(ts) AS max_ts
+                    FROM prices
+                    WHERE timeframe = ?
+                      AND symbol IN ({placeholders})
+                    GROUP BY symbol
+                ) latest
+                  ON p.symbol = latest.symbol
+                 AND p.ts = latest.max_ts
+                 AND p.timeframe = ?
+                """,
+                (timeframe, *symbols, timeframe),
+            )
+            return [PriceRow(**row) for row in cur.fetchall()]
+
     def fetch_latest_price(self, symbol: str, timeframe: str) -> Optional[PriceRow]:
         with self._lock:
             cur = self._conn.execute(

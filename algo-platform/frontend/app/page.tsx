@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useRealtime } from "@/lib/realtime";
 import { useRealtimeStore } from "@/lib/store";
+import { exchangeFeedLabel, tradingviewTickerForInstrument, type MatrixInstrument } from "@/lib/instruments";
 import type { StrategySummary } from "@/lib/strategies";
 
 type TabKey = "strategies" | "evals";
@@ -21,15 +22,17 @@ export default function DashboardPage() {
   const wsConnected = useRealtimeStore((s) => s.wsConnected);
   const [tab, setTab] = useState<TabKey>("strategies");
   const [strategies, setStrategies] = useState<StrategySummary[]>([]);
+  const [instruments, setInstruments] = useState<MatrixInstrument[]>([]);
 
   useRealtime();
 
   useEffect(() => {
     const load = async () => {
-      const [pricesRes, evalsRes, strategiesRes] = await Promise.all([
+      const [pricesRes, evalsRes, strategiesRes, instrumentsRes] = await Promise.all([
         fetch("/api/prices"),
         fetch("/api/evals"),
-        fetch("/api/strategies")
+        fetch("/api/strategies"),
+        fetch("/api/market-data/matrix"),
       ]);
       if (pricesRes.ok) {
         setPrices(await pricesRes.json());
@@ -39,6 +42,9 @@ export default function DashboardPage() {
       }
       if (strategiesRes.ok) {
         setStrategies(await strategiesRes.json());
+      }
+      if (instrumentsRes.ok) {
+        setInstruments(await instrumentsRes.json());
       }
     };
     load();
@@ -55,6 +61,20 @@ export default function DashboardPage() {
       return acc;
     }, {});
   }, [activeEvals]);
+
+  const instrumentById = useMemo(
+    () => Object.fromEntries(instruments.map((instrument) => [instrument.instrument_id, instrument])),
+    [instruments]
+  );
+
+  const featuredSymbols = useMemo(() => {
+    const activeSymbols = activeEvals.map((row) => row.symbol);
+    const priority = ["BTC", "ETH", "SOL", ...activeSymbols];
+    const unique = Array.from(new Set(priority)).filter((symbol) => prices[symbol] != null);
+    if (unique.length >= 3) return unique.slice(0, 3);
+    const liveSymbols = Object.keys(prices);
+    return [...unique, ...liveSymbols.filter((symbol) => !unique.includes(symbol))].slice(0, 3);
+  }, [activeEvals, prices]);
 
   const handleStrategyCreated = (strategy: StrategySummary) => {
     setStrategies((current) => [strategy, ...current.filter((item) => item.key !== strategy.key)]);
@@ -96,14 +116,23 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        {(["BTC", "ETH", "SOL"] as const).map((symbol) => (
-          <PriceCard
-            key={symbol}
-            symbol={symbol}
-            price={prices[symbol]?.price}
-            ts={prices[symbol]?.ts}
-          />
-        ))}
+        {featuredSymbols.length ? (
+          featuredSymbols.map((symbol) => (
+            <PriceCard
+              key={symbol}
+              symbol={instrumentById[symbol] ? tradingviewTickerForInstrument(instrumentById[symbol]) : symbol}
+              price={prices[symbol]?.price}
+              ts={prices[symbol]?.ts}
+              subtitle={instrumentById[symbol] ? exchangeFeedLabel(instrumentById[symbol]) : undefined}
+            />
+          ))
+        ) : (
+          <Card className="md:col-span-3">
+            <CardContent className="pt-6 text-sm text-slate-500">
+              Waiting for live prices...
+            </CardContent>
+          </Card>
+        )}
       </section>
 
       <section>

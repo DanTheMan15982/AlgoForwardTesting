@@ -319,6 +319,25 @@ class PriceTickResponse(BaseModel):
     source: str
 
 
+class MarketDataMatrixRowResponse(BaseModel):
+    instrument_id: str
+    display_name: str
+    asset_class: str
+    market: str
+    exchange: str
+    provider: str
+    provider_type: str
+    external_ticker: str
+    stream_status: str
+    cadence_target: str
+    free_access: bool
+    current_price: Optional[float] = None
+    price_ts: Optional[str] = None
+    price_source: Optional[str] = None
+    update_age_ms: Optional[int] = None
+    notes: Optional[str] = None
+
+
 class TradeResponse(BaseModel):
     id: str
     eval_id: str
