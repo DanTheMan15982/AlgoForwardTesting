@@ -452,6 +452,13 @@ class Database:
                 )
                 """
             )
+            for statement in (
+                "CREATE INDEX IF NOT EXISTS idx_evals_status_created_at ON evals(status, created_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_positions_eval_status_closed_at ON positions(eval_id, status, closed_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_events_eval_ts ON events(eval_id, ts DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_pending_fills_status_scheduled_ts ON pending_fills(status, scheduled_ts)",
+            ):
+                self._conn.execute(statement)
             self._conn.commit()
 
     def _migrate_positions_tp_nullable(self) -> None:
@@ -1359,6 +1366,19 @@ class Database:
                 (eval_id,),
             )
             return [PositionRow(**row) for row in cur.fetchall()]
+
+    def list_open_positions_for_evals(self, eval_ids: list[str]) -> dict[str, list[PositionRow]]:
+        if not eval_ids:
+            return {}
+        placeholders = ",".join(["?"] * len(eval_ids))
+        query = f"SELECT * FROM positions WHERE status = 'OPEN' AND eval_id IN ({placeholders})"
+        with self._lock:
+            cur = self._conn.execute(query, eval_ids)
+            grouped: dict[str, list[PositionRow]] = {}
+            for row in cur.fetchall():
+                position = PositionRow(**row)
+                grouped.setdefault(position.eval_id, []).append(position)
+            return grouped
 
     def fetch_position(self, position_id: str) -> Optional[PositionRow]:
         with self._lock:

@@ -11,13 +11,15 @@ function getWsUrl() {
 
 export function useRealtime() {
   const updatePrice = useRealtimeStore((s) => s.updatePrice);
-  const upsertEval = useRealtimeStore((s) => s.upsertEval);
   const patchEval = useRealtimeStore((s) => s.patchEval);
   const setWsConnected = useRealtimeStore((s) => s.setWsConnected);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectingRef = useRef(false);
 
   useEffect(() => {
     let pollingId: ReturnType<typeof setInterval> | null = null;
+    let destroyed = false;
 
     const startPolling = () => {
       if (pollingId) return;
@@ -29,7 +31,7 @@ export function useRealtime() {
         }
         if (evalsRes.ok) {
           const evals = await evalsRes.json();
-          evals.forEach(upsertEval);
+          useRealtimeStore.getState().setEvals(evals);
         }
       }, 5000);
     };
@@ -42,20 +44,32 @@ export function useRealtime() {
     };
 
     const connect = () => {
+      if (destroyed || reconnectingRef.current) return;
+      reconnectingRef.current = true;
       const wsUrl = getWsUrl();
-      if (!wsUrl) return;
+      if (!wsUrl) {
+        reconnectingRef.current = false;
+        return;
+      }
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        reconnectingRef.current = false;
         setWsConnected(true);
         stopPolling();
       };
 
       ws.onclose = () => {
+        reconnectingRef.current = false;
         setWsConnected(false);
         startPolling();
-        setTimeout(connect, 3000);
+        if (!destroyed && !reconnectTimeoutRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = null;
+            connect();
+          }, 3000);
+        }
       };
 
       ws.onerror = () => {
@@ -90,8 +104,13 @@ export function useRealtime() {
     startPolling();
 
     return () => {
+      destroyed = true;
       stopPolling();
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       wsRef.current?.close();
     };
-  }, [setWsConnected, updatePrice, upsertEval, patchEval]);
+  }, [setWsConnected, updatePrice, patchEval]);
 }

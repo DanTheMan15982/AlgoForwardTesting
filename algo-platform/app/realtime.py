@@ -32,10 +32,12 @@ class WebSocketManager:
         payload = json.dumps({"type": message.type, "data": message.data})
         async with self._lock:
             connections = list(self._connections)
-        for ws in connections:
-            try:
-                await ws.send_text(payload)
-            except Exception:
+        if not connections:
+            return
+        tasks = [ws.send_text(payload) for ws in connections]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for ws, result in zip(connections, results):
+            if isinstance(result, Exception):
                 await self.disconnect(ws)
 
     def connection_count(self) -> int:

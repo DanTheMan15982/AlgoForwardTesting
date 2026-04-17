@@ -62,10 +62,9 @@ export default function DashboardPage() {
   const liveStrategyCoverage = new Set(activeEvals.map((row) => row.strategy_key)).size;
 
   const totalOpenPnl = activeEvals.reduce((sum, row) => sum + (row.open_pnl ?? 0), 0);
+  const totalPnl = evals.reduce((sum, row) => sum + (row.current_equity - row.starting_balance), 0);
   const totalWins = evals.reduce((sum, row) => sum + (row.wins ?? 0), 0);
   const totalLosses = evals.reduce((sum, row) => sum + (row.losses ?? 0), 0);
-  const decidedTrades = totalWins + totalLosses;
-  const globalWinRate = decidedTrades > 0 ? totalWins / decidedTrades : null;
 
   const liveSymbols = useMemo(() => {
     const keys = Object.keys(prices);
@@ -93,6 +92,7 @@ export default function DashboardPage() {
       activeAccounts: number;
       totalAccounts: number;
       pnl: number;
+      totalPnl: number;
       wins: number;
       losses: number;
       profitFactorSum: number;
@@ -107,6 +107,7 @@ export default function DashboardPage() {
         activeAccounts: 0,
         totalAccounts: 0,
         pnl: 0,
+        totalPnl: 0,
         wins: 0,
         losses: 0,
         profitFactorSum: 0,
@@ -115,6 +116,7 @@ export default function DashboardPage() {
       existing.totalAccounts += 1;
       if (row.status === "ACTIVE") existing.activeAccounts += 1;
       existing.pnl += row.open_pnl ?? 0;
+      existing.totalPnl += row.current_equity - row.starting_balance;
       existing.wins += row.wins ?? 0;
       existing.losses += row.losses ?? 0;
       if (row.profit_factor != null) {
@@ -133,6 +135,15 @@ export default function DashboardPage() {
       };
     });
   }, [evals, strategies]);
+
+  const topStrategyCards = useMemo(
+    () =>
+      [...strategyPerformance]
+        .filter((item) => item.winRate != null)
+        .sort((a, b) => b.totalPnl - a.totalPnl)
+        .slice(0, 3),
+    [strategyPerformance]
+  );
 
   const topStrategiesByPnl = useMemo(
     () => [...strategyPerformance].sort((a, b) => b.pnl - a.pnl).slice(0, 5),
@@ -185,9 +196,9 @@ export default function DashboardPage() {
         <section className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-4">
             <MetricCard label="Live Accounts" value={activeEvals.length} tone="market" />
+            <MetricCard label="Total P/L" value={formatCurrency(totalPnl)} tone={totalPnl >= 0 ? "perf" : "risk"} />
             <MetricCard label="Open Trades" value={openTradesTotal} tone="perf" />
-            <MetricCard label="Net Open P/L" value={formatCurrency(totalOpenPnl)} tone={totalOpenPnl >= 0 ? "perf" : "risk"} />
-            <MetricCard label="Win Rate" value={globalWinRate != null ? formatPercent(globalWinRate) : "--"} tone="market" />
+            <MetricCard label="Strategies Live" value={liveStrategyCoverage} tone="market" />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-4">
@@ -196,6 +207,31 @@ export default function DashboardPage() {
             <MiniStat label="Wins" value={totalWins} tone="perf" />
             <MiniStat label="Losses" value={totalLosses} tone="risk" />
           </div>
+
+          <Card className="dash-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-slate-100">Top 3 Strategies</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-3">
+                {topStrategyCards.length ? topStrategyCards.map((item) => (
+                  <div key={item.key} className="dash-row">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-slate-100">{item.name}</div>
+                      <div className="text-xs text-slate-500">
+                        WR {item.winRate != null ? formatPercent(item.winRate) : "--"}
+                      </div>
+                    </div>
+                    <div className={`tabular text-sm font-semibold ${item.totalPnl >= 0 ? "text-success" : "text-danger"}`}>
+                      {formatCurrency(item.totalPnl)}
+                    </div>
+                  </div>
+                )) : (
+                  <div className="text-sm text-slate-500">No strategy performance yet.</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid gap-4 xl:grid-cols-5">
             <div className="space-y-4 xl:col-span-3">
@@ -264,6 +300,7 @@ export default function DashboardPage() {
                   <MiniStat label="Paused" value={pausedAccounts} tone="risk" />
                   <MiniStat label="Passed" value={passedAccounts} tone="market" />
                   <MiniStat label="Failed" value={failedAccounts} tone="risk" />
+                  <MiniStat label="Open P/L" value={formatCurrency(totalOpenPnl)} tone={totalOpenPnl >= 0 ? "perf" : "risk"} />
                 </CardContent>
               </Card>
 

@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import json
 import logging
 import os
+import socket
 import statistics
-import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from typing import Any, Optional
@@ -73,6 +75,8 @@ ws_manager = WebSocketManager()
 price_service = PriceService(db, ws_manager)
 eval_manager = EvalManager(db, price_service, ws_manager)
 last_wal_checkpoint_at: Optional[str] = None
+passthrough_executor = ThreadPoolExecutor(max_workers=int(os.getenv("WEBHOOK_PASSTHROUGH_WORKERS", "8")))
+allow_private_passthrough = os.getenv("ALLOW_PRIVATE_PASSTHROUGH", "").lower() in {"1", "true", "yes"}
 
 
 def _failure(reason: str, status_code: int = 400) -> JSONResponse:
@@ -145,7 +149,8 @@ def _process_webhook(
 ) -> JSONResponse:
     if not strategy_key:
         return _failure("Missing strategy key", status_code=400)
-    if not db.fetch_strategy(strategy_key):
+    strategy = db.fetch_strategy(strategy_key)
+    if not strategy:
         return _failure("Strategy not found", status_code=404)
 
     _forward_webhook_passthrough(strategy_key, raw_body, content_type)
@@ -168,10 +173,6 @@ def _process_webhook(
         validate_payload(payload)
     except ValueError as exc:
         return _failure(str(exc), status_code=400)
-
-    strategy = db.fetch_strategy(strategy_key)
-    if not strategy:
-        return _failure("Strategy not found", status_code=404)
 
     symbol = strategy.symbol
     if not matches_instrument_ticker(symbol, payload.ticker):
@@ -346,7 +347,19 @@ async def create_eval(request: EvalCreateRequest) -> EvalResponse:
 @app.get("/api/evals", response_model=list[EvalResponse])
 async def list_evals(status: Optional[str] = None, view: Optional[str] = None) -> list[EvalResponse]:
     rows = db.list_evals_filtered(status, view)
-    return [_eval_response(row) for row in rows]
+    strategies = {row.key: row for row in db.list_strategies()}
+    open_positions_by_eval = db.list_open_positions_for_evals([row.id for row in rows])
+    latest_ticks = price_service.get_latest_ticks()
+    return [
+        _eval_response(
+            row,
+            strategy=strategies.get(row.strategy_key),
+            open_positions=open_positions_by_eval.get(row.id, []),
+            latest_ticks=latest_ticks,
+            include_history=True,
+        )
+        for row in rows
+    ]
 
 
 @app.get("/api/evals/{eval_id}", response_model=EvalResponse)
@@ -951,9 +964,17 @@ def _insert_strategy_run(
     )
 
 
-def _eval_response(row: Any) -> EvalResponse:
-    strategy = db.fetch_strategy(row.strategy_key)
-    open_positions = db.list_open_positions_for_eval(row.id)
+def _eval_response(
+    row: Any,
+    *,
+    strategy: Optional[StrategyRow] = None,
+    open_positions: Optional[list[Any]] = None,
+    latest_ticks: Optional[dict[str, Any]] = None,
+    include_history: bool = True,
+) -> EvalResponse:
+    strategy = strategy if strategy is not None else db.fetch_strategy(row.strategy_key)
+    open_positions = open_positions if open_positions is not None else db.list_open_positions_for_eval(row.id)
+    latest_ticks = latest_ticks if latest_ticks is not None else price_service.get_latest_ticks()
     last_price = None
     open_pnl = None
     unrealized_equity = None
@@ -998,7 +1019,7 @@ def _eval_response(row: Any) -> EvalResponse:
                     exit_fill_price=position.exit_fill_price,
                 )
             )
-            tick = price_service.get_latest_ticks().get(position.symbol)
+            tick = latest_ticks.get(position.symbol)
             if tick:
                 last_price = tick.price
                 entry_fill = position.entry_fill_price or position.entry_price
@@ -1016,15 +1037,23 @@ def _eval_response(row: Any) -> EvalResponse:
     except ValueError:
         reset_at = None
         reset_remaining = None
-    closed_positions = db.list_closed_positions_for_eval(row.id)
-    rolling_positions = db.list_closed_positions_for_eval_limit(row.id, 20)
-    summary = summarize_eval(row, closed_positions, rolling_positions)
-    if closed_positions:
-        total_fees_paid = sum((position.total_fees or 0.0) for position in closed_positions)
-        total_slippage_impact = sum(
-            ((position.entry_slippage or 0.0) + (position.exit_slippage or 0.0)) * position.qty
-            for position in closed_positions
-        )
+    if include_history:
+        closed_positions = db.list_closed_positions_for_eval(row.id)
+        rolling_positions = db.list_closed_positions_for_eval_limit(row.id, 20)
+        summary = summarize_eval(row, closed_positions, rolling_positions)
+        if closed_positions:
+            total_fees_paid = sum((position.total_fees or 0.0) for position in closed_positions)
+            total_slippage_impact = sum(
+                ((position.entry_slippage or 0.0) + (position.exit_slippage or 0.0)) * position.qty
+                for position in closed_positions
+            )
+    elif row.stats_cache_json:
+        try:
+            parsed = json.loads(row.stats_cache_json)
+            if isinstance(parsed, dict):
+                summary = parsed
+        except json.JSONDecodeError:
+            summary = {}
     avg_rr = None
     return EvalResponse(
         id=row.id,
@@ -1127,6 +1156,8 @@ def _normalize_webhook_passthrough_settings(
     parsed = urllib.parse.urlparse(cleaned)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return False, None, "Webhook passthrough URL must be a full http(s) URL"
+    if not allow_private_passthrough and _is_private_or_local_target(parsed.hostname):
+        return False, None, "Webhook passthrough URL must not target private or loopback hosts"
     return True, cleaned, None
 
 
@@ -1139,11 +1170,7 @@ def _forward_webhook_passthrough(
     if not urls:
         return
     for url in urls:
-        threading.Thread(
-            target=_post_webhook_passthrough,
-            args=(url, raw_body, content_type),
-            daemon=True,
-        ).start()
+        passthrough_executor.submit(_post_webhook_passthrough, url, raw_body, content_type)
 
 
 def _post_webhook_passthrough(url: str, raw_body: bytes, content_type: Optional[str]) -> None:
@@ -1160,6 +1187,27 @@ def _post_webhook_passthrough(url: str, raw_body: bytes, content_type: Optional[
             return
     except urllib.error.URLError as exc:
         logger.warning("passthrough webhook failed | %s | %s", url, exc)
+
+
+def _is_private_or_local_target(hostname: Optional[str]) -> bool:
+    if not hostname:
+        return True
+    lowered = hostname.lower()
+    if lowered in {"localhost", "ip6-localhost"}:
+        return True
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return True
+    for info in infos:
+        address = info[4][0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            continue
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+            return True
+    return False
 
 
 @app.websocket("/ws")
