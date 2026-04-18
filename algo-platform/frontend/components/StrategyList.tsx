@@ -43,6 +43,7 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [form, setForm] = useState<StrategyFormState>(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [instrumentQuery, setInstrumentQuery] = useState("");
   const [instrumentPickerOpen, setInstrumentPickerOpen] = useState(false);
   const [instruments, setInstruments] = useState<MatrixInstrument[]>([]);
@@ -70,6 +71,20 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
     () => Object.fromEntries(instruments.map((row) => [row.instrument_id, row])),
     [instruments]
   );
+
+  const visibleStrategies = useMemo(() => {
+    const normalized = searchQuery.trim().toLowerCase();
+    if (!normalized) return sortedStrategies;
+    return sortedStrategies.filter((strategy) => {
+      const instrument = instrumentsById[strategy.symbol];
+      return (
+        strategy.name.toLowerCase().includes(normalized) ||
+        strategy.key.toLowerCase().includes(normalized) ||
+        strategy.symbol.toLowerCase().includes(normalized) ||
+        (instrument?.display_name.toLowerCase().includes(normalized) ?? false)
+      );
+    });
+  }, [searchQuery, sortedStrategies, instrumentsById]);
 
   const selectedInstrument = form.symbol ? instrumentsById[form.symbol] ?? null : null;
 
@@ -175,130 +190,150 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
   };
 
   const saveDisabled = saving || !form.name.trim() || !form.symbol.trim() || (!editingKey && !form.key.trim());
+  const activeStrategyCount = Object.values(activeEvalCounts).filter((count) => count > 0).length;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-slate-100">Strategies</h2>
-        </div>
-        <Dialog
-          open={open}
-          onOpenChange={(next) => {
-            setOpen(next);
-            if (!next) resetForm();
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button variant="outline" onClick={openCreate}>New Strategy</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{editingKey ? "Edit strategy" : "Create strategy"}</DialogTitle>
-              <DialogDescription>Select a ticker and save routing settings.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4">
-              <div className="grid gap-4 rounded-xl border border-border/70 bg-panelSoft/40 p-4 md:grid-cols-2">
-                <div>
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Key</div>
-                  <Input
-                    value={form.key}
-                    disabled={Boolean(editingKey)}
-                    placeholder="ema_retest_v1"
-                    onChange={(event) => setForm({ ...form, key: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Name</div>
-                  <Input
-                    value={form.name}
-                    placeholder="EMA Retest"
-                    onChange={(event) => setForm({ ...form, name: event.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border/70 bg-panelSoft/40 p-4">
-                <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-neonSoft">Strategies</p>
+            <h2 className="text-2xl font-semibold text-slate-100">Strategies</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg border border-border/60 bg-panelSoft/60 px-4 py-2 text-sm text-slate-300">
+              Live: {activeStrategyCount}
+            </div>
+          <Dialog
+            open={open}
+            onOpenChange={(next) => {
+              setOpen(next);
+              if (!next) resetForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button variant="outline" onClick={openCreate}>New Strategy</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>{editingKey ? "Edit strategy" : "Create strategy"}</DialogTitle>
+                <DialogDescription>Select a ticker and save routing settings.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4">
+                <div className="grid gap-4 rounded-xl border border-border/70 bg-panelSoft/40 p-4 md:grid-cols-2">
                   <div>
-                    <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Instrument</div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Key</div>
+                    <Input
+                      value={form.key}
+                      disabled={Boolean(editingKey)}
+                      placeholder="ema_retest_v1"
+                      onChange={(event) => setForm({ ...form, key: event.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Name</div>
+                    <Input
+                      value={form.name}
+                      placeholder="EMA Retest"
+                      onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    />
                   </div>
                 </div>
-                <div className="grid gap-3">
-                  {selectedInstrument ? (
-                    <div className="rounded-lg border border-neon/40 bg-neon/10 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Selected Ticker</div>
-                          <div className="mt-1 font-mono text-sm text-slate-100">
-                            {tradingviewTickerForInstrument(selectedInstrument)}
+
+                <div className="rounded-xl border border-border/70 bg-panelSoft/40 p-4">
+                  <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Instrument</div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3">
+                    {selectedInstrument ? (
+                      <div className="rounded-lg border border-neon/40 bg-neon/10 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Selected Ticker</div>
+                            <div className="mt-1 font-mono text-sm text-slate-100">
+                              {tradingviewTickerForInstrument(selectedInstrument)}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="info">{exchangeFeedLabel(selectedInstrument)}</Badge>
+                            <Badge variant="default">{selectedInstrument.instrument_id}</Badge>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="info">{exchangeFeedLabel(selectedInstrument)}</Badge>
-                          <Badge variant="default">{selectedInstrument.instrument_id}</Badge>
-                        </div>
+                        <div className="mt-3 text-xs text-slate-400">{selectedInstrument.display_name}</div>
                       </div>
-                      <div className="mt-3 text-xs text-slate-400">{selectedInstrument.display_name}</div>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-border/70 bg-panel/40 px-4 py-3 text-sm text-slate-500">
-                      Select a ticker.
-                    </div>
-                  )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setInstrumentPickerOpen(true)}
-                    disabled={!instruments.length}
-                  >
-                    Select Ticker
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-4 rounded-xl border border-border/70 bg-panelSoft/40 p-4">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Routing</div>
-                <label className="flex items-start gap-3 rounded-lg border border-border/70 bg-panelSoft/60 p-3 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 accent-neon"
-                    checked={form.webhook_passthrough_enabled}
-                    onChange={(event) => setForm({ ...form, webhook_passthrough_enabled: event.target.checked })}
-                  />
-                  <div>
-                    <div className="font-medium">Webhook passthrough</div>
-                    <div className="text-xs text-slate-500">
-                      Forward webhook payloads to this URL.
-                    </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-border/70 bg-panel/40 px-4 py-3 text-sm text-slate-500">
+                        Select a ticker.
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setInstrumentPickerOpen(true)}
+                      disabled={!instruments.length}
+                    >
+                      Select Ticker
+                    </Button>
                   </div>
-                </label>
-                <div>
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Passthrough URL</div>
-                  <Input
-                    value={form.webhook_passthrough_url}
-                    placeholder="http://10.0.0.15:9000/hooks/tradingview"
-                    onChange={(event) => setForm({ ...form, webhook_passthrough_url: event.target.value })}
-                  />
                 </div>
-              </div>
 
-              {selected && typeof window !== "undefined" ? (
-                <div className="rounded-lg border border-border/70 bg-panelSoft/60 p-3 text-xs text-slate-400">
-                  Webhook: {window.location.origin}/api/webhook/{selected.key}
+                <div className="grid gap-4 rounded-xl border border-border/70 bg-panelSoft/40 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Routing</div>
+                  <label className="flex items-start gap-3 rounded-lg border border-border/70 bg-panelSoft/60 p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 accent-neon"
+                      checked={form.webhook_passthrough_enabled}
+                      onChange={(event) => setForm({ ...form, webhook_passthrough_enabled: event.target.checked })}
+                    />
+                    <div>
+                      <div className="font-medium">Webhook passthrough</div>
+                      <div className="text-xs text-slate-500">
+                        Forward webhook payloads to this URL.
+                      </div>
+                    </div>
+                  </label>
+                  <div>
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">Passthrough URL</div>
+                    <Input
+                      value={form.webhook_passthrough_url}
+                      placeholder="http://10.0.0.15:9000/hooks/tradingview"
+                      onChange={(event) => setForm({ ...form, webhook_passthrough_url: event.target.value })}
+                    />
+                  </div>
                 </div>
-              ) : null}
-              {error ? (
-                <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-slate-100">
-                  {error}
-                </div>
-              ) : null}
-              <Button onClick={handleSubmit} disabled={saveDisabled}>
-                {saving ? "Saving..." : editingKey ? "Save Strategy" : "Create Strategy"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+
+                {selected && typeof window !== "undefined" ? (
+                  <div className="rounded-lg border border-border/70 bg-panelSoft/60 p-3 text-xs text-slate-400">
+                    Webhook: {window.location.origin}/api/webhook/{selected.key}
+                  </div>
+                ) : null}
+                {error ? (
+                  <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-slate-100">
+                    {error}
+                  </div>
+                ) : null}
+                <Button onClick={handleSubmit} disabled={saveDisabled}>
+                  {saving ? "Saving..." : editingKey ? "Save Strategy" : "Create Strategy"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-panelSoft/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <Input
+            value={searchQuery}
+            placeholder="Search strategy name, key, or ticker..."
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="sm:max-w-md"
+          />
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+            {visibleStrategies.length} shown
+          </div>
+        </div>
         <Dialog
           open={instrumentPickerOpen}
           onOpenChange={(next) => {
@@ -366,8 +401,8 @@ export function StrategyList({ strategies, activeEvalCounts, onCreated, onUpdate
       </div>
 
       <div className="grid gap-4">
-        {sortedStrategies.length ? (
-          sortedStrategies.map((strategy) => {
+        {visibleStrategies.length ? (
+          visibleStrategies.map((strategy) => {
             const instrument = instrumentsById[strategy.symbol];
             return (
               <div

@@ -22,13 +22,13 @@ export function PriceCard({ symbol, price, ts, subtitle }: PriceCardProps) {
   return (
     <Card className="relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-neon/10 via-transparent to-neonMagenta/10" />
-      <CardHeader className="relative">
+      <CardHeader className="relative pb-3">
         <CardTitle className="text-lg tracking-[0.2em] text-slate-100">{symbol}</CardTitle>
         {subtitle ? (
           <div className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{subtitle}</div>
         ) : null}
       </CardHeader>
-      <CardContent className="relative flex items-end justify-between">
+      <CardContent className="relative flex items-end justify-between pt-3 pb-5">
         <div>
           <div
             className={`text-2xl font-semibold tabular transition-colors duration-700 ease-out ${flashClass}`}

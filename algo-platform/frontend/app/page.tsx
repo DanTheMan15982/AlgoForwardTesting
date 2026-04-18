@@ -8,6 +8,7 @@ import { NewEvalModal } from "@/components/NewEvalModal";
 import { StrategyList } from "@/components/StrategyList";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { useRealtime } from "@/lib/realtime";
 import { useRealtimeStore } from "@/lib/store";
@@ -24,6 +25,7 @@ export default function DashboardPage() {
   const wsConnected = useRealtimeStore((s) => s.wsConnected);
   const [screen, setScreen] = useState<ScreenKey>("overview");
   const [strategies, setStrategies] = useState<StrategySummary[]>([]);
+  const [accountsSearch, setAccountsSearch] = useState("");
 
   useRealtime();
 
@@ -158,6 +160,20 @@ export default function DashboardPage() {
         .slice(0, 5),
     [strategyPerformance]
   );
+
+  const visibleActiveEvals = useMemo(() => {
+    const normalized = accountsSearch.trim().toLowerCase();
+    if (!normalized) return activeEvals;
+    return activeEvals.filter((row) => {
+      return (
+        row.name.toLowerCase().includes(normalized) ||
+        row.symbol.toLowerCase().includes(normalized) ||
+        row.strategy_key.toLowerCase().includes(normalized) ||
+        (row.strategy_name?.toLowerCase().includes(normalized) ?? false) ||
+        row.status.toLowerCase().includes(normalized)
+      );
+    });
+  }, [accountsSearch, activeEvals]);
 
   const handleStrategyCreated = (strategy: StrategySummary) => {
     setStrategies((current) => [strategy, ...current.filter((item) => item.key !== strategy.key)]);
@@ -360,17 +376,16 @@ export default function DashboardPage() {
 
       {screen === "strategies" ? (
         <section className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <MiniStat label="Strategies" value={strategies.length} tone="market" />
-            <MiniStat label="With Live Accounts" value={liveStrategyCoverage} tone="perf" />
-            <MiniStat label="Idle Strategies" value={Math.max(0, strategies.length - liveStrategyCoverage)} tone="risk" />
-          </div>
-          <StrategyList
-            strategies={strategies}
-            activeEvalCounts={activeEvalCounts}
-            onCreated={handleStrategyCreated}
-            onUpdated={handleStrategyUpdated}
-          />
+          <Card className="dash-card">
+            <CardContent className="pt-5">
+              <StrategyList
+                strategies={strategies}
+                activeEvalCounts={activeEvalCounts}
+                onCreated={handleStrategyCreated}
+                onUpdated={handleStrategyUpdated}
+              />
+            </CardContent>
+          </Card>
         </section>
       ) : null}
 
@@ -390,7 +405,18 @@ export default function DashboardPage() {
                   <NewEvalModal strategies={strategies} />
                 </div>
               </div>
-              <EvalsTable evals={activeEvals} />
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border/70 bg-panelSoft/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <Input
+                  value={accountsSearch}
+                  placeholder="Search account, strategy, or ticker..."
+                  onChange={(event) => setAccountsSearch(event.target.value)}
+                  className="sm:max-w-md"
+                />
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  {visibleActiveEvals.length} shown
+                </div>
+              </div>
+              <EvalsTable evals={visibleActiveEvals} />
             </CardContent>
           </Card>
         </section>
