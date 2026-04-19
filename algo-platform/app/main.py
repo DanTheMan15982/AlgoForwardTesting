@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from typing import Any, Optional
 
-from fastapi import FastAPI, Header, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, Header, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -64,6 +64,7 @@ from .analytics import (
     build_ruleset,
     ruleset_hash,
 )
+from .backtesting import analyze_backtest, parse_tradingview_csv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("webhook")
@@ -638,6 +639,47 @@ async def health() -> HealthResponse:
 @app.get("/health", response_model=HealthResponse)
 async def health_root() -> HealthResponse:
     return await health()
+
+
+@app.post("/api/backtesting/analyze")
+async def analyze_backtesting_csv(
+    file: UploadFile = File(...),
+    starting_balance: float = Form(10000.0),
+    max_dd_pct: float = Form(0.06),
+    daily_dd_pct: float = Form(0.03),
+    profit_target_pct: float = Form(0.08),
+    monte_carlo_runs: int = Form(2000),
+) -> JSONResponse:
+    if not file.filename.lower().endswith(".csv"):
+        return _failure("Upload must be a CSV file", status_code=400)
+    content = await file.read()
+    trades = parse_tradingview_csv(content)
+    if not trades:
+        return _failure("No exit trades parsed from CSV", status_code=400)
+    result = analyze_backtest(
+        trades,
+        starting_balance=starting_balance,
+        max_dd_pct=max_dd_pct,
+        daily_dd_pct=daily_dd_pct,
+        profit_target_pct=profit_target_pct,
+        monte_carlo_runs=max(100, min(20000, monte_carlo_runs)),
+    )
+    return JSONResponse(
+        status_code=200,
+        content=jsonable_encoder(
+            {
+                "file_name": file.filename,
+                "params": {
+                    "starting_balance": starting_balance,
+                    "max_dd_pct": max_dd_pct,
+                    "daily_dd_pct": daily_dd_pct,
+                    "profit_target_pct": profit_target_pct,
+                    "monte_carlo_runs": monte_carlo_runs,
+                },
+                "result": result,
+            }
+        ),
+    )
 
 
 @app.get("/api/strategies/summary")
